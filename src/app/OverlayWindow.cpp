@@ -3,6 +3,7 @@
 #include "../platform/WindowStyles.h"
 
 #include <utility>
+#include <windowsx.h>
 
 namespace rv::app {
 
