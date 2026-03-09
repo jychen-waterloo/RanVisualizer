@@ -17,7 +17,7 @@ class SpectrumAnalyzer {
 public:
     struct Config {
         size_t fftSize{2048};
-        size_t hopSize{1024};
+        size_t hopSize{512};
         size_t bandCount{64};
         float minFrequencyHz{30.0f};
         float maxFrequencyHz{16000.0f};

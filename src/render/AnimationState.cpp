@@ -17,9 +17,9 @@ void AnimationState::EnsureBandCount(const size_t bandCount) {
 void AnimationState::Update(const RenderSnapshot& snapshot, const float deltaSeconds) {
     EnsureBandCount(snapshot.smoothedBands.size());
 
-    const float riseAlpha = 1.0f - std::exp(-deltaSeconds * 14.0f);
-    const float fallAlpha = 1.0f - std::exp(-deltaSeconds * 8.0f);
-    const float peakDecay = std::exp(-deltaSeconds * (snapshot.isSilentLike ? 8.5f : 4.0f));
+    const float riseAlpha = 1.0f - std::exp(-deltaSeconds * 34.0f);
+    const float fallAlpha = 1.0f - std::exp(-deltaSeconds * 18.0f);
+    const float peakDecay = std::exp(-deltaSeconds * (snapshot.isSilentLike ? 10.0f : 6.0f));
 
     for (size_t i = 0; i < displayedBands_.size(); ++i) {
         const float target = std::clamp(snapshot.smoothedBands[i], 0.0f, 1.0f);
@@ -36,7 +36,7 @@ void AnimationState::Update(const RenderSnapshot& snapshot, const float deltaSec
     }
 
     const float accentTarget = std::clamp(snapshot.loudness * 0.65f + snapshot.bassEnergy * 0.35f, 0.0f, 1.0f);
-    const float accentAlpha = 1.0f - std::exp(-deltaSeconds * 4.5f);
+    const float accentAlpha = 1.0f - std::exp(-deltaSeconds * 8.0f);
     accent_ += (accentTarget - accent_) * accentAlpha;
 }
 
