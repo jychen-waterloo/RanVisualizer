@@ -10,7 +10,7 @@ struct MotionProfile {
     float attackHz{34.0f};
     float releaseHz{18.0f};
     float peakDecayHz{6.0f};
-    float gain{1.0f};
+    float visualGain{1.0f};
     float lowEndBoost{0.0f};
     float accentHz{8.0f};
 };
