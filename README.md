@@ -1,80 +1,81 @@
-# RanVisualizer Task 5 - Usable Overlay Utility
+# RanVisualizer - Configuration Milestone
 
-This repository now contains **Task 1 + Task 2 + Task 3 + Task 4 + Task 5** for the Windows audio visualizer project.
+This milestone adds practical live configuration to the existing Windows overlay visualizer while preserving:
 
-- Task 1: WASAPI loopback capture + endpoint reinitialize behavior
-- Task 2: FFT/log-band analyzer with smoothing + peaks
-- Task 3: smooth Direct2D spectrum renderer
-- Task 4: semi-transparent topmost desktop overlay
-- Task 5: tray control, hotkeys, persisted settings, and clean exit UX
+- WASAPI loopback capture
+- analyzer pipeline
+- smooth layered overlay rendering
+- tray integration
+- hotkeys
+- hover close button
 
-## What Task 5 adds
+## New user-facing settings
 
-- Reliable exit paths (no Task Manager requirement):
-  - tray menu -> **Exit**
-  - overlay hover close button -> **X**
-  - global hotkey -> `Ctrl+Alt+Q`
-- System tray integration with context menu actions:
-  - Show/Hide overlay
-  - Toggle click-through
-  - Enable interaction
-  - Exit
-- Global hotkeys (app focus not required):
-  - `Ctrl+Alt+V` toggle overlay visibility
-  - `Ctrl+Alt+I` toggle click-through
-  - `Ctrl+Alt+Q` exit app
-- Lightweight persisted settings in `%APPDATA%\RanVisualizer\settings.ini`:
-  - overlay position
-  - overlay size
-  - click-through state
-  - overlay visibility
-  - interactive-start preference (derived from current click-through)
-- Hover-revealed close control integrated into the render path:
-  - subtle rounded close button drawn in top-right
-  - hidden by default
-  - fades in when hovering in interactive mode
-  - fades out after pointer leaves
+All of the following are now configurable and persisted:
 
-## Interaction model
+- **Window size** (small / medium / large presets)
+- **Theme preset**
+  - Minimal Cyan
+  - Neon Purple
+  - Warm Amber
+  - Soft Green
+  - Monochrome Ice
+- **Bar color** (manual palette path)
+- **Background color** (manual palette path)
+- **Overlay/background opacity**
+- **Spectrum bar count** (24 / 40 / 64 / 96)
+- **Motion intensity** (Calm / Balanced / Energetic)
 
-- **Interactive mode** (`click-through = off`)
-  - overlay accepts mouse input
-  - drag from visual area to reposition
-  - hover reveals the close button
-- **Click-through mode** (`click-through = on`)
-  - overlay does not intercept mouse input
-  - use tray menu or hotkey to return to interactive mode
+## How to change settings
 
-This prevents the “stuck in click-through forever” failure mode.
+Use the **system tray icon** (right click) and the compact submenus:
 
-## Rendering and responsiveness notes
+- Window size
+- Spectrum bars
+- Motion feel
+- Theme preset
+- Bar color
+- Background color
+- Overlay opacity
 
-Task 5 preserves the Task 4 layered Direct2D pipeline:
+Most options apply **live** immediately.
 
-- `ID2D1DCRenderTarget` + premultiplied alpha DIB
-- `UpdateLayeredWindow(..., ULW_ALPHA)` presentation
-- existing analyzer-to-render cadence and smoothing behavior
+## Persistence and config file
 
-The overlay control UI is very lightweight and rendered in the same pass, avoiding heavy UI framework overhead.
+Settings are persisted as JSON.
 
-## Clean shutdown behavior
+Primary path:
 
-All exit paths converge on normal window destruction and process shutdown:
+```text
+%APPDATA%\RanVisualizer\settings.json
+```
 
-1. request exit command
-2. destroy overlay window
-3. unregister hotkeys and remove tray icon
-4. persist settings
-5. stop audio capture and unregister device notifications
-6. quit process normally (no zombie background process)
+Fallback path (if AppData resolution fails):
 
-## Architecture additions (Task 5)
+```text
+./config/settings.json
+```
 
-- `src/app/TrayIcon.*` - tray icon lifecycle and menu command mapping
-- `src/app/Hotkeys.*` - global hotkey registration/unregistration
-- `src/app/Settings.*` - tiny persisted settings loader/saver
-- `src/render/OverlayControls.*` - hover animation state and close-button hit test
-- `src/app/AppCommands.h` - command enum used by overlay/app dispatch
+If the config is missing or partially invalid, safe defaults are used.
+
+## Motion intensity mapping (real behavior, not random)
+
+`motionIntensity` drives a runtime motion profile used by the renderer:
+
+- higher intensity -> faster attack
+- higher intensity -> faster release
+- higher intensity -> slower visible peak drop
+- higher intensity -> more visual gain
+- higher intensity -> extra low-end emphasis
+- higher intensity -> faster accent response
+
+This makes low intensity calm/smooth and high intensity punchier without adding random jitter.
+
+## Bar count remapping strategy
+
+Analyzer output is remapped to the selected visible bar count using **weighted interval sampling** across source bands.
+
+This avoids harsh drop/duplicate artifacts and keeps spacing/energy distribution intentional for both low and high bar counts.
 
 ## Build (Visual Studio 2022 + CMake)
 
@@ -89,35 +90,8 @@ Binary output:
 build/Release/RanVisualizerCapture.exe
 ```
 
-## Run
-
-```powershell
-.\build\Release\RanVisualizerCapture.exe
-```
-
-## Settings location
-
-Primary path:
-
-```text
-%APPDATA%\RanVisualizer\settings.ini
-```
-
-Fallback path (if AppData resolution fails):
-
-```text
-./config/settings.ini
-```
-
 ## Known limitations
 
-- Tray icon currently uses the default application icon.
-- No full preferences UI yet (intentionally out-of-scope for Task 5).
-- Overlay resizing is persisted only if window size changes by code/path that updates window rect.
-
-## Potential Task 6 focus
-
-- richer in-overlay affordances (optional tiny control strip)
-- custom tray/app icon assets
-- optional snap-to-edge placement helpers
-- optional startup-with-Windows + startup mode policy
+- Settings UI is intentionally tray-driven (compact) rather than a full dialog window.
+- Color selection uses curated palette options (plus preset themes) instead of a full color picker.
+- Linux CI/build environments without Windows SDK cannot compile this target (Windows native app).

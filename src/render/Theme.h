@@ -4,6 +4,15 @@
 
 namespace rv::render {
 
+enum class ThemePreset {
+    MinimalCyan,
+    NeonPurple,
+    WarmAmber,
+    SoftGreen,
+    MonochromeIce,
+    Custom,
+};
+
 struct Theme {
     D2D1_COLOR_F background{0.04f, 0.05f, 0.08f, 0.0f};
     D2D1_COLOR_F backdrop{0.03f, 0.05f, 0.08f, 0.34f};
@@ -14,6 +23,15 @@ struct Theme {
     D2D1_COLOR_F debugText{0.78f, 0.84f, 0.93f, 0.85f};
 };
 
-Theme MakeDefaultTheme();
+struct ThemeConfig {
+    ThemePreset preset{ThemePreset::MinimalCyan};
+    D2D1_COLOR_F customBarColor{0.26f, 0.72f, 0.95f, 0.95f};
+    D2D1_COLOR_F customBackgroundColor{0.03f, 0.05f, 0.08f, 0.34f};
+    float backgroundOpacity{0.34f};
+    float barOpacity{0.95f};
+};
+
+Theme MakeTheme(const ThemeConfig& config);
+const wchar_t* ThemePresetName(ThemePreset preset);
 
 } // namespace rv::render

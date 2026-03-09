@@ -2,6 +2,7 @@
 
 #include "../platform/WindowStyles.h"
 
+#include <algorithm>
 #include <utility>
 #include <windowsx.h>
 
@@ -12,6 +13,7 @@ OverlayWindow::OverlayWindow(audio::LoopbackCapture& capture, const bool showDeb
 }
 
 bool OverlayWindow::Create(HINSTANCE instance, const SettingsData& settings) {
+    settings_ = settings;
     WNDCLASSW wc{};
     wc.lpfnWndProc = OverlayWindow::WndProcStatic;
     wc.hInstance = instance;
@@ -23,12 +25,12 @@ bool OverlayWindow::Create(HINSTANCE instance, const SettingsData& settings) {
         return false;
     }
 
-    RECT rect = platform::ComputeBottomRightRect(platform::OverlayMetrics{settings.width, settings.height, 24});
-    if (settings.hasPosition) {
-        rect.left = settings.x;
-        rect.top = settings.y;
-        rect.right = rect.left + settings.width;
-        rect.bottom = rect.top + settings.height;
+    RECT rect = platform::ComputeBottomRightRect(platform::OverlayMetrics{settings_.width, settings_.height, 24});
+    if (settings_.hasPosition) {
+        rect.left = settings_.x;
+        rect.top = settings_.y;
+        rect.right = rect.left + settings_.width;
+        rect.bottom = rect.top + settings_.height;
     }
 
     hwnd_ = CreateWindowExW(platform::kOverlayExStyle, wc.lpszClassName, L"RanVisualizer Overlay",
@@ -39,16 +41,18 @@ bool OverlayWindow::Create(HINSTANCE instance, const SettingsData& settings) {
         return false;
     }
 
-    overlayVisible_ = settings.overlayVisible;
+    overlayVisible_ = settings_.overlayVisible;
     ShowWindow(hwnd_, overlayVisible_ ? SW_SHOWNOACTIVATE : SW_HIDE);
     UpdateWindow(hwnd_);
 
-    SetClickThrough(settings.clickThrough && !settings.startInteractive);
+    SetClickThrough(settings_.clickThrough && !settings_.startInteractive);
     renderer_.SetInteractionState(!clickThrough_, false);
 
     if (!renderer_.Initialize(hwnd_)) {
         return false;
     }
+
+    ApplyRenderConfig();
 
     tray_.Initialize(hwnd_);
     hotkeys_.Register(hwnd_);
@@ -145,7 +149,7 @@ LRESULT OverlayWindow::WndProc(const UINT msg, const WPARAM wParam, const LPARAM
         break;
     case TrayIcon::kTrayMessage:
         if (lParam == WM_RBUTTONUP || lParam == WM_CONTEXTMENU) {
-            tray_.ShowMenu(overlayVisible_, clickThrough_);
+            tray_.ShowMenu(settings_, overlayVisible_, clickThrough_);
             return 0;
         }
         if (lParam == WM_LBUTTONDBLCLK) {
@@ -156,6 +160,13 @@ LRESULT OverlayWindow::WndProc(const UINT msg, const WPARAM wParam, const LPARAM
     case WM_COMMAND:
         if (tray_.IsTrayCommand(wParam)) {
             RequestCommand(tray_.CommandFromMenu(wParam));
+            return 0;
+        }
+        if (tray_.TryApplySettingsCommand(wParam, settings_)) {
+            ApplyRenderConfig();
+            if (onSettingsChanged_) {
+                onSettingsChanged_();
+            }
             return 0;
         }
         break;
@@ -204,6 +215,13 @@ SettingsData OverlayWindow::CaptureSettings() const {
     data.clickThrough = clickThrough_;
     data.overlayVisible = overlayVisible_;
     data.startInteractive = !clickThrough_;
+    data.barCount = settings_.barCount;
+    data.backgroundOpacity = settings_.backgroundOpacity;
+    data.barOpacity = settings_.barOpacity;
+    data.motionIntensity = settings_.motionIntensity;
+    data.themePreset = settings_.themePreset;
+    data.barColor = settings_.barColor;
+    data.backgroundColor = settings_.backgroundColor;
     return data;
 }
 
@@ -222,6 +240,31 @@ bool OverlayWindow::PointFromLParam(const LPARAM lParam, float& x, float& y) con
     x = static_cast<float>(p.x);
     y = static_cast<float>(p.y);
     return true;
+}
+
+
+void OverlayWindow::SetSettingsChangedCallback(std::function<void()> callback) {
+    onSettingsChanged_ = std::move(callback);
+}
+
+void OverlayWindow::ApplyRenderConfig() {
+    settings_.barCount = (std::clamp)(settings_.barCount, static_cast<size_t>(24), static_cast<size_t>(96));
+    settings_.motionIntensity = (std::clamp)(settings_.motionIntensity, 0.0f, 1.0f);
+    settings_.backgroundOpacity = (std::clamp)(settings_.backgroundOpacity, 0.05f, 1.0f);
+
+    render::RenderConfig cfg{};
+    cfg.barCount = settings_.barCount;
+    cfg.motionIntensity = settings_.motionIntensity;
+    cfg.theme.preset = settings_.themePreset;
+    cfg.theme.backgroundOpacity = settings_.backgroundOpacity;
+    cfg.theme.barOpacity = settings_.barOpacity;
+    cfg.theme.customBarColor = settings_.barColor;
+    cfg.theme.customBackgroundColor = settings_.backgroundColor;
+    renderer_.SetConfig(cfg);
+
+    RECT rc{};
+    GetWindowRect(hwnd_, &rc);
+    SetWindowPos(hwnd_, nullptr, rc.left, rc.top, settings_.width, settings_.height, SWP_NOZORDER | SWP_NOACTIVATE);
 }
 
 } // namespace rv::app

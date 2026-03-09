@@ -4,6 +4,7 @@
 #include "Layout.h"
 #include "OverlayControls.h"
 #include "RenderTypes.h"
+#include "RenderConfig.h"
 #include "Theme.h"
 
 #include <d2d1.h>
@@ -20,6 +21,7 @@ public:
     bool Initialize(HWND hwnd);
     void OnResize(UINT width, UINT height);
     void SetInteractionState(bool interactive, bool pointerHovering);
+    void SetConfig(const RenderConfig& config);
     bool HitTestCloseButton(float x, float y) const;
     void Render(const RenderSnapshot& snapshot, const FrameTiming& timing, bool showDebug);
 
@@ -36,6 +38,7 @@ private:
     HWND hwnd_{nullptr};
     UINT width_{0};
     UINT height_{0};
+    RenderConfig config_{};
     Theme theme_{};
     AnimationState animation_{};
     OverlayControls controls_{};

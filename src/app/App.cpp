@@ -94,6 +94,10 @@ int App::Run(HINSTANCE instance, const int showCmd) {
         HandleCommand(command);
     });
 
+    window_.SetSettingsChangedCallback([this]() {
+        SaveSettings();
+    });
+
     MSG msg{};
     auto prev = std::chrono::steady_clock::now();
     auto fpsWindowStart = prev;

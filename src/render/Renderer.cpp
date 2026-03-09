@@ -7,7 +7,7 @@
 namespace rv::render {
 
 Renderer::Renderer()
-    : theme_(MakeDefaultTheme()) {
+    : theme_(MakeTheme(config_.theme)) {
 }
 
 Renderer::~Renderer() {
@@ -193,6 +193,23 @@ bool Renderer::HitTestCloseButton(const float x, const float y) const {
     return controls_.HitTestCloseButton(x, y);
 }
 
+void Renderer::SetConfig(const RenderConfig& config) {
+    config_ = config;
+    theme_ = MakeTheme(config_.theme);
+    if (barBrush_) {
+        barBrush_->SetColor(theme_.barBase);
+    }
+    if (peakBrush_) {
+        peakBrush_->SetColor(theme_.peak);
+    }
+    if (glowBrush_) {
+        glowBrush_->SetColor(theme_.glow);
+    }
+    if (backdropBrush_) {
+        backdropBrush_->SetColor(theme_.backdrop);
+    }
+}
+
 void Renderer::DrawBars(const BarLayout& layout) {
     const auto& bands = animation_.DisplayedBands();
     const auto& peaks = animation_.DisplayedPeaks();
@@ -276,7 +293,16 @@ void Renderer::Render(const RenderSnapshot& snapshot, const FrameTiming& timing,
         return;
     }
 
-    animation_.Update(snapshot, timing.deltaSeconds);
+    MotionProfile profile{};
+    const float intensity = std::clamp(config_.motionIntensity, 0.0f, 1.0f);
+    profile.attackHz = 18.0f + intensity * 36.0f;
+    profile.releaseHz = 8.0f + intensity * 26.0f;
+    profile.peakDecayHz = 3.4f + intensity * 8.0f;
+    profile.gain = 0.92f + intensity * 0.58f;
+    profile.lowEndBoost = intensity * 0.55f;
+    profile.accentHz = 4.0f + intensity * 9.0f;
+
+    animation_.Update(snapshot, timing.deltaSeconds, profile, config_.barCount);
     const auto size = D2D1::SizeF(static_cast<float>(width_), static_cast<float>(height_));
     const auto layout = BuildBarLayout(size, animation_.DisplayedBands().size());
 
