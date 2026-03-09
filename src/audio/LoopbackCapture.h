@@ -28,6 +28,7 @@ public:
     void Stop();
 
     void RequestReinitialize(const std::wstring& endpointIdHint);
+    bool GetLatestAnalysisFrame(dsp::AnalysisFrame& outFrame) const;
 
 private:
     struct RuntimeStats {
@@ -64,6 +65,9 @@ private:
     uint32_t analysisSampleRate_{0};
     bool analyzerReconfigureRequested_{false};
     dsp::SpectrumAnalyzer analyzer_;
+    mutable std::mutex latestFrameMutex_;
+    dsp::AnalysisFrame latestFrame_;
+    bool hasLatestFrame_{false};
     std::vector<float> conversionScratch_;
 
     Microsoft::WRL::ComPtr<IMMDeviceEnumerator> deviceEnumerator_;

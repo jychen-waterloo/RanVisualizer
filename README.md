@@ -1,34 +1,79 @@
-# RanVisualizer Task 2 - Loopback Capture + DSP Analysis Validation
+# RanVisualizer Task 3 - Windowed Direct2D Spectrum Renderer
 
-This repository now contains **Task 1 + Task 2** for the Windows audio visualizer project.
+This repository now contains **Task 1 + Task 2 + Task 3** for the Windows audio visualizer project.
 
-Task 1 remains the same: robust WASAPI loopback capture from the default playback endpoint with device-change recovery.
+- Task 1: WASAPI loopback capture + default-output-device reinitialize handling.
+- Task 2: FFT/log-band analyzer with smoothing + peaks + summary energies.
+- Task 3 (this milestone): a polished **normal Win32 resizable desktop window** rendered with **Direct2D**.
 
-Task 2 adds a production-oriented **DSP analysis pipeline** that turns captured PCM into smooth, log-band, visualization-ready spectrum data (console-only validation, no UI/rendering yet).
+> This is intentionally **not** the final transparent corner overlay yet.
 
-## Task 2 additions
+## What Task 3 adds
 
-- Input normalization and channel combine to normalized mono float
-- Rolling buffered framing decoupled from WASAPI packet sizes
-- Hann-windowed short-time FFT analysis
-- Log-spaced spectral band mapping (default: 64 bands)
-- Dynamic conditioning (noise-floor gate + mild compression + conservative adaptive gain)
-- Temporal smoothing with separate attack/release
-- Per-band peak tracking with graceful decay
-- Summary energies (bass / mid / treble / loudness)
-- Compact periodic analysis diagnostics in console
+- Standard overlapped Win32 window (`Audio Visualizer - Task 3`)
+- Per-monitor DPI-aware desktop app shell
+- Dedicated render loop targeting smooth frame updates (~60 FPS feel)
+- Direct2D renderer with:
+  - dark background
+  - rounded vertical bars from Task 2 smoothed log bands
+  - peak caps with soft decay
+  - subtle glow underlay
+  - calm silence behavior
+- Optional lightweight debug overlay text (FPS/loudness/silence/band count)
+- Clean modular split between app lifecycle, windowing, layout, animation state, and rendering theme
 
-## Defaults used
+## Why this is still a normal window
 
-- FFT size: `2048`
-- Hop size: `1024` (50% overlap)
-- Band count: `64`
-- Band range: `30 Hz` to `16 kHz` (clamped by Nyquist)
-- Smoothing: fast attack + slower release
-- Peak tracking: immediate rise + exponential decay
-- Noise floor gate: about `-72 dB`
+Task 3 is a quality checkpoint for animation and visual design in a robust renderer path. It deliberately avoids overlay-specific behavior:
 
-These defaults were chosen to balance responsiveness, stability, and CPU cost for real-time desktop loopback.
+- no transparent layered window behavior
+- no always-on-top
+- no click-through
+- no tray icon
+- no hotkeys
+
+Those are deferred to Task 4.
+
+## Rendering architecture overview
+
+- `src/app/App.*`
+  - process DPI setup
+  - COM lifetime
+  - capture/notifier startup and shutdown
+  - message pump + frame pacing
+- `src/app/MainWindow.*`
+  - Win32 class/window creation
+  - resize/destroy handling
+  - fetch latest analyzer snapshot each frame
+- `src/render/Renderer.*`
+  - Direct2D/DirectWrite resource management
+  - draw background, bars, peaks, glow, debug text
+  - handle `D2DERR_RECREATE_TARGET`
+- `src/render/Layout.*`
+  - responsive bar geometry for current client size
+- `src/render/AnimationState.*`
+  - frame-to-frame interpolation/easing for smooth motion
+- `src/render/RenderTypes.h`
+  - render snapshot/timing model
+
+## How renderer consumes analyzer output
+
+`LoopbackCapture` now publishes the most recent `AnalysisFrame`. The render thread reads this latest snapshot per frame and converts it into a render model:
+
+- primary bars: `smoothedBandValues`
+- secondary peak caps: `peakBandValues`
+- accent response: `loudness + bassEnergy`
+- silence calming: `isSilentLike` influences decay
+
+No raw FFT bins are rendered directly.
+
+## Resize and frame update behavior
+
+- Render target is resized on `WM_SIZE`.
+- Bar layout is rebuilt from current client size each frame (no stretched bitmap caching).
+- Message pump is decoupled from analysis cadence.
+- Renderer runs continuously with small sleep-based pacing and interpolated animation state.
+- Minimized windows skip rendering work.
 
 ## Build (Visual Studio 2022 + CMake)
 
@@ -49,49 +94,12 @@ build/Release/RanVisualizerCapture.exe
 .\build\Release\RanVisualizerCapture.exe
 ```
 
-Press `Ctrl+C` to exit.
-
-## Console output meaning
-
-You will see two periodic streams:
-
-1. Capture diagnostics (`[capture ...]`)
-   - packet/frame counters
-   - RMS + peak
-   - silent packet indicator
-   - capture throughput estimate
-
-2. DSP diagnostics (`[analysis]`)
-   - `loud`: overall loudness proxy
-   - `bass/mid/treb`: summary energies from smoothed log bands
-   - `silent`: silence-like state after gating/smoothing
-   - `bars`: compact ASCII view of selected smoothed bands
-
-Example:
-
-```text
-[analysis] loud=0.241 bass=0.372 mid=0.229 treb=0.104 silent=no bars=.-==++*##%%#*+=-
-```
-
-## Validation guidance
-
-- Play bass-heavy content: bass energy and lower bars should respond more strongly.
-- Play speech/mid-focused content: mid should dominate.
-- Pause playback/silence: values should settle smoothly with minimal flicker.
-- Change default playback device while running: capture should reinitialize and analysis should continue.
-
-## Architecture notes
-
-- Capture and DSP are decoupled with a queue so WASAPI packet timing does not directly define FFT frames.
-- FFT frames are built from a rolling sample buffer (`fftSize`, `hopSize`) independent of packet boundaries.
-- No per-frame FFT/window allocation; reusable buffers and precomputed Hann coefficients are used.
-
 ## Known limitations
 
-- Current analyzer output is console diagnostics only; no renderer/UI yet.
-- Optional onset/pulse hint is not implemented in this task.
-- Format support mirrors Task 1 practical formats (float32, pcm16, 24-in-32).
+- Renderer currently targets a normal window only (no translucent overlay behavior yet).
+- No settings UI/config surface yet.
+- Debug overlay is compile-time behavior in app wiring (easy to toggle in code).
 
-## What comes in Task 3
+## What Task 4 will add
 
-Task 3 will consume the existing smoothed/peak band model and build the actual rendering layer (window/overlay/visualizer presentation), while reusing this DSP pipeline unchanged.
+Task 4 will reuse this renderer/app structure and introduce overlay behavior (transparent layered presentation, topmost/click-through policy, and related windowing mechanics) without replacing the Task 2 analysis pipeline.

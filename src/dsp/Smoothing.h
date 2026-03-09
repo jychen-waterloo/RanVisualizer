@@ -8,9 +8,9 @@ namespace rv::dsp {
 class Smoothing {
 public:
     struct Config {
-        float attackSeconds{0.045f};
-        float releaseSeconds{0.22f};
-        float peakDecayPerSecond{0.8f};
+        float attackSeconds{0.020f};
+        float releaseSeconds{0.14f};
+        float peakDecayPerSecond{1.8f};
     };
 
     void Configure(size_t bandCount, const Config& config);

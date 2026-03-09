@@ -15,7 +15,7 @@
 namespace {
 
 constexpr auto kStatusPrintPeriod = std::chrono::milliseconds(500);
-constexpr auto kCaptureSleepPeriod = std::chrono::milliseconds(8);
+constexpr auto kCaptureSleepPeriod = std::chrono::milliseconds(4);
 constexpr auto kAnalysisPrintPeriod = std::chrono::milliseconds(300);
 
 std::string MiniBars(const std::vector<float>& bands) {
@@ -79,6 +79,17 @@ void LoopbackCapture::RequestReinitialize(const std::wstring& endpointIdHint) {
         currentEndpointId_ = endpointIdHint;
     }
     reinitializeRequested_.store(true);
+}
+
+
+bool LoopbackCapture::GetLatestAnalysisFrame(dsp::AnalysisFrame& outFrame) const {
+    std::lock_guard<std::mutex> lock(latestFrameMutex_);
+    if (!hasLatestFrame_) {
+        return false;
+    }
+
+    outFrame = latestFrame_;
+    return true;
 }
 
 bool LoopbackCapture::InitializeForDefaultDevice() {
@@ -176,6 +187,10 @@ bool LoopbackCapture::InitializeForDefaultDevice() {
         analysisSampleRate_ = mixFormat_->nSamplesPerSec;
         analysisQueue_.clear();
         analyzerReconfigureRequested_ = true;
+    }
+    {
+        std::lock_guard<std::mutex> lock(latestFrameMutex_);
+        hasLatestFrame_ = false;
     }
     analysisCv_.notify_one();
 
@@ -333,11 +348,12 @@ void LoopbackCapture::AnalysisThreadMain() {
     localSamples.reserve(8192);
 
     auto lastPrint = std::chrono::steady_clock::now();
+    uint64_t lastPublishedTimestamp = 0;
 
     while (running_.load()) {
         {
             std::unique_lock<std::mutex> lock(analysisMutex_);
-            analysisCv_.wait_for(lock, std::chrono::milliseconds(50), [&] {
+            analysisCv_.wait_for(lock, std::chrono::milliseconds(8), [&] {
                 return !running_.load() || !analysisQueue_.empty() || analyzerReconfigureRequested_;
             });
 
@@ -352,7 +368,7 @@ void LoopbackCapture::AnalysisThreadMain() {
                 analyzerReconfigureRequested_ = false;
             }
 
-            const size_t take = std::min<size_t>(analysisQueue_.size(), 4096);
+            const size_t take = std::min<size_t>(analysisQueue_.size(), 2048);
             localSamples.clear();
             localSamples.reserve(take);
             for (size_t i = 0; i < take; ++i) {
@@ -365,10 +381,17 @@ void LoopbackCapture::AnalysisThreadMain() {
             analyzer_.PushSamples(localSamples.data(), localSamples.size());
         }
 
-        const auto now = std::chrono::steady_clock::now();
-        if (now - lastPrint >= kAnalysisPrintPeriod) {
-            dsp::AnalysisFrame frame;
-            if (analyzer_.ConsumeLatestFrame(frame)) {
+        dsp::AnalysisFrame frame;
+        if (analyzer_.ConsumeLatestFrame(frame) && frame.timestampMs != lastPublishedTimestamp) {
+            {
+                std::lock_guard<std::mutex> lock(latestFrameMutex_);
+                latestFrame_ = frame;
+                hasLatestFrame_ = true;
+            }
+            lastPublishedTimestamp = frame.timestampMs;
+
+            const auto now = std::chrono::steady_clock::now();
+            if (now - lastPrint >= kAnalysisPrintPeriod) {
                 std::ostringstream oss;
                 oss << std::fixed << std::setprecision(3);
                 oss << "[analysis] loud=" << frame.loudness
@@ -378,8 +401,8 @@ void LoopbackCapture::AnalysisThreadMain() {
                     << " silent=" << (frame.isSilentLike ? "yes" : "no")
                     << " bars=" << MiniBars(frame.smoothedBandValues);
                 util::Logger::Instance().Info(oss.str());
+                lastPrint = now;
             }
-            lastPrint = now;
         }
     }
 }

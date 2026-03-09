@@ -1,13 +1,26 @@
 cmake_minimum_required(VERSION 3.20)
 
-project(RanVisualizerCaptureValidation VERSION 0.1.0 LANGUAGES CXX)
+project(RanVisualizerCaptureValidation VERSION 0.3.0 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
-add_executable(RanVisualizerCapture
+add_executable(RanVisualizerCapture WIN32
     src/main.cpp
+    src/app/App.h
+    src/app/App.cpp
+    src/app/MainWindow.h
+    src/app/MainWindow.cpp
+    src/render/Renderer.h
+    src/render/Renderer.cpp
+    src/render/RenderTypes.h
+    src/render/Layout.h
+    src/render/Layout.cpp
+    src/render/Theme.h
+    src/render/Theme.cpp
+    src/render/AnimationState.h
+    src/render/AnimationState.cpp
     src/audio/LoopbackCapture.cpp
     src/audio/LoopbackCapture.h
     src/audio/DeviceNotifier.cpp
@@ -37,6 +50,9 @@ target_link_libraries(RanVisualizerCapture PRIVATE
     ole32
     avrt
     uuid
+    d2d1
+    dwrite
+    shcore
 )
 
 if(MSVC)
