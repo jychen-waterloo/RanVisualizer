@@ -1,37 +1,43 @@
-# RanVisualizer Task 1 - WASAPI Loopback Capture Validation
+# RanVisualizer Task 2 - Loopback Capture + DSP Analysis Validation
 
-This repository contains **Task 1 only** for a Windows desktop audio visualizer project.
+This repository now contains **Task 1 + Task 2** for the Windows audio visualizer project.
 
-## What this task validates
+Task 1 remains the same: robust WASAPI loopback capture from the default playback endpoint with device-change recovery.
 
-This console application validates the **audio capture layer** by capturing system output audio from the current default playback endpoint using WASAPI loopback.
+Task 2 adds a production-oriented **DSP analysis pipeline** that turns captured PCM into smooth, log-band, visualization-ready spectrum data (console-only validation, no UI/rendering yet).
 
-It validates:
-- opening the default render endpoint (not microphone capture)
-- reading packetized loopback audio continuously
-- handling silent packets correctly
-- computing simple runtime levels (RMS + peak)
-- reacting to default playback device changes at runtime
-- clean shutdown and robust logging
+## Task 2 additions
 
-It intentionally does **not** include UI, FFT, rendering, overlays, tray icon, hotkeys, or config UI.
+- Input normalization and channel combine to normalized mono float
+- Rolling buffered framing decoupled from WASAPI packet sizes
+- Hann-windowed short-time FFT analysis
+- Log-spaced spectral band mapping (default: 64 bands)
+- Dynamic conditioning (noise-floor gate + mild compression + conservative adaptive gain)
+- Temporal smoothing with separate attack/release
+- Per-band peak tracking with graceful decay
+- Summary energies (bass / mid / treble / loudness)
+- Compact periodic analysis diagnostics in console
 
-## Prerequisites
+## Defaults used
 
-- Windows 10 or Windows 11 (x64)
-- Visual Studio 2022 with C++ desktop workload
-- CMake 3.20+
+- FFT size: `2048`
+- Hop size: `1024` (50% overlap)
+- Band count: `64`
+- Band range: `30 Hz` to `16 kHz` (clamped by Nyquist)
+- Smoothing: fast attack + slower release
+- Peak tracking: immediate rise + exponential decay
+- Noise floor gate: about `-72 dB`
 
-## Build (CMake + Visual Studio 2022)
+These defaults were chosen to balance responsiveness, stability, and CPU cost for real-time desktop loopback.
 
-From a Developer PowerShell / Command Prompt:
+## Build (Visual Studio 2022 + CMake)
 
 ```powershell
 cmake -S . -B build -G "Visual Studio 17 2022" -A x64
 cmake --build build --config Release
 ```
 
-Binary output (default):
+Binary output:
 
 ```text
 build/Release/RanVisualizerCapture.exe
@@ -43,40 +49,49 @@ build/Release/RanVisualizerCapture.exe
 .\build\Release\RanVisualizerCapture.exe
 ```
 
-Press `Ctrl+C` to stop.
+Press `Ctrl+C` to exit.
 
-## Expected console output
+## Console output meaning
 
-Startup logs include:
-- `Opened default playback device`
-- device friendly name
-- endpoint id
-- format summary (sample rate, channels, bit depth, block align, avg bytes/sec, subtype)
-- buffer size and device period
+You will see two periodic streams:
 
-Runtime logs every ~500 ms include counters and levels:
+1. Capture diagnostics (`[capture ...]`)
+   - packet/frame counters
+   - RMS + peak
+   - silent packet indicator
+   - capture throughput estimate
+
+2. DSP diagnostics (`[analysis]`)
+   - `loud`: overall loudness proxy
+   - `bass/mid/treb`: summary energies from smoothed log bands
+   - `silent`: silence-like state after gating/smoothing
+   - `bars`: compact ASCII view of selected smoothed bands
+
+Example:
 
 ```text
-[t=12.5s] packets=1234 frames=543210 rms=0.0321 peak=0.1842 silent=no fps_audio=48000
+[analysis] loud=0.241 bass=0.372 mid=0.229 treb=0.104 silent=no bars=.-==++*##%%#*+=-
 ```
 
-If system audio is silent, logs continue with low/zero RMS/peak and `silent=yes` where appropriate.
+## Validation guidance
 
-## Manual test plan
+- Play bass-heavy content: bass energy and lower bars should respond more strongly.
+- Play speech/mid-focused content: mid should dominate.
+- Pause playback/silence: values should settle smoothly with minimal flicker.
+- Change default playback device while running: capture should reinitialize and analysis should continue.
 
-1. Start the app.
-2. Start system playback (music/video/browser audio).
-3. Verify RMS/peak rise and vary with audio content.
-4. Pause playback; verify RMS/peak drop and silence is still reported as healthy capture.
-5. Change the Windows default playback device (e.g. speakers -> headset).
-6. Verify logs show default device change and successful reinitialization without app restart.
+## Architecture notes
+
+- Capture and DSP are decoupled with a queue so WASAPI packet timing does not directly define FFT frames.
+- FFT frames are built from a rolling sample buffer (`fftSize`, `hopSize`) independent of packet boundaries.
+- No per-frame FFT/window allocation; reusable buffers and precomputed Hann coefficients are used.
 
 ## Known limitations
 
-- Timer-driven polling is used for reliability/simplicity in this validation task (no event-driven mode yet).
-- The level estimator currently handles common loopback mix formats:
-  - IEEE float 32-bit
-  - PCM 16-bit
-  - PCM 24-bit in 32-bit container
-- Other uncommon formats are logged and skipped for level estimation.
-- This is capture-layer validation only; no visualization pipeline exists yet.
+- Current analyzer output is console diagnostics only; no renderer/UI yet.
+- Optional onset/pulse hint is not implemented in this task.
+- Format support mirrors Task 1 practical formats (float32, pcm16, 24-in-32).
+
+## What comes in Task 3
+
+Task 3 will consume the existing smoothed/peak band model and build the actual rendering layer (window/overlay/visualizer presentation), while reusing this DSP pipeline unchanged.
