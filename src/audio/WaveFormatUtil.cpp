@@ -11,11 +11,12 @@
 #include <iomanip>
 #include <sstream>
 
+
 namespace {
 
 std::string GuidToString(const GUID& guid) {
     wchar_t wide[64]{};
-    std::snwprintf(
+    std::swprintf(
         wide,
         std::size(wide),
         L"{%08lX-%04hX-%04hX-%02hhX%02hhX-%02hhX%02hhX%02hhX%02hhX%02hhX%02hhX}",
