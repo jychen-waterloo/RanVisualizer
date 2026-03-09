@@ -1,6 +1,7 @@
 #include "Renderer.h"
 
 #include <algorithm>
+#include <cmath>
 #include <sstream>
 
 namespace rv::render {
@@ -25,6 +26,8 @@ bool Renderer::Initialize(HWND hwnd) {
         return false;
     }
 
+    controls_.OnResize(static_cast<float>(width_), static_cast<float>(height_));
+    controls_.SetForceVisible(interactive_);
     return CreateDeviceResources();
 }
 
@@ -84,6 +87,14 @@ bool Renderer::CreateDeviceResources() {
     if (FAILED(hr)) {
         return false;
     }
+    hr = renderTarget_->CreateSolidColorBrush(D2D1::ColorF(0, 0, 0, 0), &controlBgBrush_);
+    if (FAILED(hr)) {
+        return false;
+    }
+    hr = renderTarget_->CreateSolidColorBrush(D2D1::ColorF(1, 1, 1, 1), &controlIconBrush_);
+    if (FAILED(hr)) {
+        return false;
+    }
 
     hr = dwriteFactory_->CreateTextFormat(L"Segoe UI", nullptr, DWRITE_FONT_WEIGHT_SEMI_BOLD,
         DWRITE_FONT_STYLE_NORMAL, DWRITE_FONT_STRETCH_NORMAL, 13.0f, L"en-us", &textFormat_);
@@ -138,6 +149,8 @@ bool Renderer::CreateBitmapResources(const UINT width, const UINT height) {
 void Renderer::DiscardDeviceResources() {
     textFormat_.Reset();
     backdropBrush_.Reset();
+    controlIconBrush_.Reset();
+    controlBgBrush_.Reset();
     textBrush_.Reset();
     glowBrush_.Reset();
     peakBrush_.Reset();
@@ -164,9 +177,20 @@ void Renderer::DiscardDeviceResources() {
 void Renderer::OnResize(const UINT width, const UINT height) {
     width_ = width;
     height_ = height;
+    controls_.OnResize(static_cast<float>(width_), static_cast<float>(height_));
     if (renderTarget_) {
         CreateBitmapResources(width_, height_);
     }
+}
+
+void Renderer::SetInteractionState(const bool interactive, const bool pointerHovering) {
+    interactive_ = interactive;
+    controls_.SetForceVisible(interactive);
+    controls_.SetPointerHover(pointerHovering);
+}
+
+bool Renderer::HitTestCloseButton(const float x, const float y) const {
+    return controls_.HitTestCloseButton(x, y);
 }
 
 void Renderer::DrawBars(const BarLayout& layout) {
@@ -191,6 +215,29 @@ void Renderer::DrawBars(const BarLayout& layout) {
             D2D1::RoundedRect(D2D1::RectF(baseRect.left, peakY - layout.peakHeight, baseRect.right, peakY), 1.4f, 1.4f),
             peakBrush_.Get());
     }
+}
+
+void Renderer::DrawOverlayControls() {
+    const float opacity = controls_.Opacity();
+    if (opacity < 0.02f) {
+        return;
+    }
+
+    const D2D1_ROUNDED_RECT closeButton = controls_.CloseButton();
+    controlBgBrush_->SetColor(D2D1::ColorF(0.06f, 0.06f, 0.07f, 0.60f * opacity));
+    controlIconBrush_->SetColor(D2D1::ColorF(1.0f, 1.0f, 1.0f, 0.88f * opacity));
+
+    renderTarget_->FillRoundedRectangle(closeButton, controlBgBrush_.Get());
+
+    const D2D1_RECT_F rc = closeButton.rect;
+    const float pad = 7.0f;
+    const D2D1_POINT_2F a1{rc.left + pad, rc.top + pad};
+    const D2D1_POINT_2F a2{rc.right - pad, rc.bottom - pad};
+    const D2D1_POINT_2F b1{rc.right - pad, rc.top + pad};
+    const D2D1_POINT_2F b2{rc.left + pad, rc.bottom - pad};
+
+    renderTarget_->DrawLine(a1, a2, controlIconBrush_.Get(), 1.5f);
+    renderTarget_->DrawLine(b1, b2, controlIconBrush_.Get(), 1.5f);
 }
 
 void Renderer::DrawDebugText(const RenderSnapshot& snapshot, const FrameTiming& timing, const size_t bandCount) {
@@ -247,6 +294,8 @@ void Renderer::Render(const RenderSnapshot& snapshot, const FrameTiming& timing,
     renderTarget_->FillRoundedRectangle(plate, backdropBrush_.Get());
 
     DrawBars(layout);
+    controls_.Update(timing.deltaSeconds);
+    DrawOverlayControls();
     if (showDebug) {
         DrawDebugText(snapshot, timing, animation_.DisplayedBands().size());
     }

@@ -12,10 +12,19 @@ add_executable(RanVisualizerCapture WIN32
     src/app/App.cpp
     src/app/OverlayWindow.h
     src/app/OverlayWindow.cpp
+    src/app/AppCommands.h
+    src/app/Hotkeys.h
+    src/app/Hotkeys.cpp
+    src/app/TrayIcon.h
+    src/app/TrayIcon.cpp
+    src/app/Settings.h
+    src/app/Settings.cpp
     src/render/Renderer.h
     src/render/Renderer.cpp
     src/render/RenderTypes.h
     src/render/Layout.h
+    src/render/OverlayControls.h
+    src/render/OverlayControls.cpp
     src/render/Layout.cpp
     src/render/Theme.h
     src/render/Theme.cpp
@@ -55,6 +64,7 @@ target_link_libraries(RanVisualizerCapture PRIVATE
     d2d1
     dwrite
     shcore
+    shell32
 )
 
 if(MSVC)
