@@ -43,6 +43,32 @@ void App::ShutdownAudio() {
     capture_.Stop();
 }
 
+void App::HandleCommand(const AppCommand command) {
+    switch (command) {
+    case AppCommand::ToggleOverlayVisibility:
+        window_.ToggleOverlayVisibility();
+        SaveSettings();
+        break;
+    case AppCommand::ToggleClickThrough:
+        window_.ToggleClickThrough();
+        SaveSettings();
+        break;
+    case AppCommand::EnableInteractive:
+        window_.EnsureInteractive();
+        SaveSettings();
+        break;
+    case AppCommand::Exit:
+        SaveSettings();
+        DestroyWindow(window_.Hwnd());
+        break;
+    }
+}
+
+void App::SaveSettings() {
+    settingsData_ = window_.CaptureSettings();
+    (void)settings_.Save(settingsData_);
+}
+
 int App::Run(HINSTANCE instance, const int showCmd) {
     SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
 
@@ -51,16 +77,22 @@ int App::Run(HINSTANCE instance, const int showCmd) {
         return 1;
     }
 
+    (void)settings_.Load(settingsData_);
+
     if (!InitializeAudio()) {
         ShutdownAudio();
         return 1;
     }
 
     (void)showCmd;
-    if (!window_.Create(instance)) {
+    if (!window_.Create(instance, settingsData_)) {
         ShutdownAudio();
         return 1;
     }
+
+    window_.SetCommandCallback([this](const AppCommand command) {
+        HandleCommand(command);
+    });
 
     MSG msg{};
     auto prev = std::chrono::steady_clock::now();
@@ -71,6 +103,7 @@ int App::Run(HINSTANCE instance, const int showCmd) {
     while (true) {
         while (PeekMessageW(&msg, nullptr, 0, 0, PM_REMOVE)) {
             if (msg.message == WM_QUIT) {
+                SaveSettings();
                 ShutdownAudio();
                 return static_cast<int>(msg.wParam);
             }

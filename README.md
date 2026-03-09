@@ -1,51 +1,80 @@
-# RanVisualizer Task 4 - Desktop Overlay Visualizer
+# RanVisualizer Task 5 - Usable Overlay Utility
 
-This repository now contains **Task 1 + Task 2 + Task 3 + Task 4** for the Windows audio visualizer project.
+This repository now contains **Task 1 + Task 2 + Task 3 + Task 4 + Task 5** for the Windows audio visualizer project.
 
 - Task 1: WASAPI loopback capture + endpoint reinitialize behavior
 - Task 2: FFT/log-band analyzer with smoothing + peaks
 - Task 3: smooth Direct2D spectrum renderer
-- Task 4 (this milestone): borderless topmost semi-transparent desktop overlay
+- Task 4: semi-transparent topmost desktop overlay
+- Task 5: tray control, hotkeys, persisted settings, and clean exit UX
 
-## What Task 4 adds
+## What Task 5 adds
 
-- Replaces the old normal resizable window with a compact overlay shell.
-- Overlay window is borderless (`WS_POPUP`), topmost, and tool-window styled.
-- Default placement is bottom-right with margin from work area edges.
-- Renderer now targets a premultiplied-alpha layered window path.
-- Transparent canvas + subtle rounded backdrop plate to keep readability on mixed wallpapers.
-- Drag-to-reposition behavior while interactive.
-- Minimal click-through toggle for testing:
-  - `F8` global poll toggle (works even when click-through is active)
-  - right-click context menu toggle when interactive
+- Reliable exit paths (no Task Manager requirement):
+  - tray menu -> **Exit**
+  - overlay hover close button -> **X**
+  - global hotkey -> `Ctrl+Alt+Q`
+- System tray integration with context menu actions:
+  - Show/Hide overlay
+  - Toggle click-through
+  - Enable interaction
+  - Exit
+- Global hotkeys (app focus not required):
+  - `Ctrl+Alt+V` toggle overlay visibility
+  - `Ctrl+Alt+I` toggle click-through
+  - `Ctrl+Alt+Q` exit app
+- Lightweight persisted settings in `%APPDATA%\RanVisualizer\settings.ini`:
+  - overlay position
+  - overlay size
+  - click-through state
+  - overlay visibility
+  - interactive-start preference (derived from current click-through)
+- Hover-revealed close control integrated into the render path:
+  - subtle rounded close button drawn in top-right
+  - hidden by default
+  - fades in when hovering in interactive mode
+  - fades out after pointer leaves
 
-## Rendering/composition path used
+## Interaction model
 
-Task 4 keeps the Task 3 bar/peak animation logic and moves presentation to a **layered-window composition path**:
+- **Interactive mode** (`click-through = off`)
+  - overlay accepts mouse input
+  - drag from visual area to reposition
+  - hover reveals the close button
+- **Click-through mode** (`click-through = on`)
+  - overlay does not intercept mouse input
+  - use tray menu or hotkey to return to interactive mode
 
-- Direct2D `ID2D1DCRenderTarget` draws into a 32-bit premultiplied DIB.
-- The frame is presented with `UpdateLayeredWindow(..., ULW_ALPHA)`.
-- Fully transparent clear color is used each frame to avoid opaque black artifacts.
+This prevents the “stuck in click-through forever” failure mode.
 
-This is stable on Windows 10/11 and preserves smooth animation while providing true alpha-composited overlay behavior.
+## Rendering and responsiveness notes
 
-## Interaction model (Task 4 scope)
+Task 5 preserves the Task 4 layered Direct2D pipeline:
 
-- Starts in **interactive mode** (not click-through).
-- Drag overlay from anywhere in the visual area.
-- Toggle click-through for testing with `F8`.
-- Toggle is reversible without killing the app.
+- `ID2D1DCRenderTarget` + premultiplied alpha DIB
+- `UpdateLayeredWindow(..., ULW_ALPHA)` presentation
+- existing analyzer-to-render cadence and smoothing behavior
 
-No tray icon/global hotkeys/settings UI are introduced in this task.
+The overlay control UI is very lightweight and rendered in the same pass, avoiding heavy UI framework overhead.
 
-## Architecture overview
+## Clean shutdown behavior
 
-- `src/app/App.*` - process lifetime, COM/audio setup, frame loop
-- `src/app/OverlayWindow.*` - overlay window creation, drag/hit testing, click-through state
-- `src/render/Renderer.*` - layered render target creation, frame draw, alpha presentation
-- `src/platform/WindowStyles.*` - overlay style constants and click-through style switching
+All exit paths converge on normal window destruction and process shutdown:
 
-Task 1 capture and Task 2 analyzer integration remain unchanged and continue feeding the renderer via latest-frame snapshots.
+1. request exit command
+2. destroy overlay window
+3. unregister hotkeys and remove tray icon
+4. persist settings
+5. stop audio capture and unregister device notifications
+6. quit process normally (no zombie background process)
+
+## Architecture additions (Task 5)
+
+- `src/app/TrayIcon.*` - tray icon lifecycle and menu command mapping
+- `src/app/Hotkeys.*` - global hotkey registration/unregistration
+- `src/app/Settings.*` - tiny persisted settings loader/saver
+- `src/render/OverlayControls.*` - hover animation state and close-button hit test
+- `src/app/AppCommands.h` - command enum used by overlay/app dispatch
 
 ## Build (Visual Studio 2022 + CMake)
 
@@ -66,12 +95,29 @@ build/Release/RanVisualizerCapture.exe
 .\build\Release\RanVisualizerCapture.exe
 ```
 
-## Current limitations (before Task 5)
+## Settings location
 
-- No tray icon yet
-- No global hotkey registration system yet
-- No formal config/settings persistence yet
+Primary path:
 
-## What Task 5 will add next
+```text
+%APPDATA%\RanVisualizer\settings.ini
+```
 
-Task 5 will build on this overlay foundation with tray controls, polished toggle UX, and structured persistence/configuration.
+Fallback path (if AppData resolution fails):
+
+```text
+./config/settings.ini
+```
+
+## Known limitations
+
+- Tray icon currently uses the default application icon.
+- No full preferences UI yet (intentionally out-of-scope for Task 5).
+- Overlay resizing is persisted only if window size changes by code/path that updates window rect.
+
+## Potential Task 6 focus
+
+- richer in-overlay affordances (optional tiny control strip)
+- custom tray/app icon assets
+- optional snap-to-edge placement helpers
+- optional startup-with-Windows + startup mode policy

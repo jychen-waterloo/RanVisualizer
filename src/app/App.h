@@ -1,6 +1,8 @@
 #pragma once
 
+#include "AppCommands.h"
 #include "OverlayWindow.h"
+#include "Settings.h"
 #include "../audio/DeviceNotifier.h"
 
 #include <memory>
@@ -14,6 +16,8 @@ public:
 private:
     bool InitializeAudio();
     void ShutdownAudio();
+    void HandleCommand(AppCommand command);
+    void SaveSettings();
 
     audio::LoopbackCapture capture_;
     OverlayWindow window_{capture_, false};
@@ -22,6 +26,8 @@ private:
             p->Release();
         }
     }};
+    Settings settings_{};
+    SettingsData settingsData_{};
 };
 
 } // namespace rv::app
