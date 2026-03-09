@@ -34,12 +34,20 @@ public:
     void SetSettingsChangedCallback(std::function<void()> callback);
 
 private:
+    static constexpr int kResizeBorderPx = 8;
+    static constexpr int kMinOverlayWidth = 280;
+    static constexpr int kMinOverlayHeight = 120;
+    static constexpr int kMaxOverlayHeight = 900;
+
     static LRESULT CALLBACK WndProcStatic(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam);
     LRESULT WndProc(UINT msg, WPARAM wParam, LPARAM lParam);
 
     void RequestCommand(AppCommand command);
     bool PointFromLParam(LPARAM lParam, float& x, float& y) const;
+    LRESULT HandleHitTest(LPARAM lParam) const;
     void ApplyRenderConfig();
+    void UpdateTrackedWindowSize();
+    void NotifySettingsChanged();
 
     HWND hwnd_{nullptr};
     audio::LoopbackCapture& capture_;

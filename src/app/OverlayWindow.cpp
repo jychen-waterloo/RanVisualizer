@@ -8,12 +8,26 @@
 
 namespace rv::app {
 
+namespace {
+
+int ClampOverlayWidth(const int width) {
+    return (std::clamp)(width, 280, 2400);
+}
+
+int ClampOverlayHeight(const int height) {
+    return (std::clamp)(height, 120, 900);
+}
+
+} // namespace
+
 OverlayWindow::OverlayWindow(audio::LoopbackCapture& capture, const bool showDebug)
     : capture_(capture), showDebug_(showDebug) {
 }
 
 bool OverlayWindow::Create(HINSTANCE instance, const SettingsData& settings) {
     settings_ = settings;
+    settings_.width = (std::clamp)(settings_.width, kMinOverlayWidth, 2400);
+    settings_.height = (std::clamp)(settings_.height, kMinOverlayHeight, kMaxOverlayHeight);
     WNDCLASSW wc{};
     wc.lpfnWndProc = OverlayWindow::WndProcStatic;
     wc.hInstance = instance;
@@ -91,7 +105,17 @@ LRESULT OverlayWindow::WndProc(const UINT msg, const WPARAM wParam, const LPARAM
     switch (msg) {
     case WM_SIZE:
         renderer_.OnResize(LOWORD(lParam), HIWORD(lParam));
+        if (wParam != SIZE_MINIMIZED) {
+            UpdateTrackedWindowSize();
+        }
         return 0;
+    case WM_GETMINMAXINFO: {
+        auto* mmi = reinterpret_cast<MINMAXINFO*>(lParam);
+        mmi->ptMinTrackSize.x = kMinOverlayWidth;
+        mmi->ptMinTrackSize.y = kMinOverlayHeight;
+        mmi->ptMaxTrackSize.y = kMaxOverlayHeight;
+        return 0;
+    }
     case WM_MOUSEMOVE:
         if (!clickThrough_) {
             pointerHovering_ = true;
@@ -105,20 +129,14 @@ LRESULT OverlayWindow::WndProc(const UINT msg, const WPARAM wParam, const LPARAM
     case WM_MOUSELEAVE:
         pointerHovering_ = false;
         return 0;
-    case WM_NCHITTEST: {
-        if (clickThrough_) {
-            return HTTRANSPARENT;
-        }
-
-        POINT cursor{};
-        cursor.x = GET_X_LPARAM(lParam);
-        cursor.y = GET_Y_LPARAM(lParam);
-        ScreenToClient(hwnd_, &cursor);
-        if (renderer_.HitTestCloseButton(static_cast<float>(cursor.x), static_cast<float>(cursor.y))) {
-            return HTCLIENT;
-        }
-        return HTCAPTION;
-    }
+    case WM_NCHITTEST:
+        return HandleHitTest(lParam);
+    case WM_ENTERSIZEMOVE:
+        return 0;
+    case WM_EXITSIZEMOVE:
+        UpdateTrackedWindowSize();
+        NotifySettingsChanged();
+        return 0;
     case WM_LBUTTONUP: {
         if (clickThrough_) {
             return 0;
@@ -187,6 +205,10 @@ void OverlayWindow::ToggleClickThrough() {
 }
 
 void OverlayWindow::SetClickThrough(const bool enabled) {
+    if (clickThrough_ == enabled) {
+        return;
+    }
+
     clickThrough_ = enabled;
     platform::SetClickThrough(hwnd_, clickThrough_);
     if (clickThrough_) {
@@ -209,8 +231,8 @@ SettingsData OverlayWindow::CaptureSettings() const {
     GetWindowRect(hwnd_, &rc);
     data.x = rc.left;
     data.y = rc.top;
-    data.width = rc.right - rc.left;
-    data.height = rc.bottom - rc.top;
+    data.width = settings_.width;
+    data.height = settings_.height;
     data.hasPosition = true;
     data.clickThrough = clickThrough_;
     data.overlayVisible = overlayVisible_;
@@ -251,6 +273,8 @@ void OverlayWindow::ApplyRenderConfig() {
     settings_.barCount = (std::clamp)(settings_.barCount, static_cast<size_t>(24), static_cast<size_t>(96));
     settings_.motionIntensity = (std::clamp)(settings_.motionIntensity, 0.0f, 1.0f);
     settings_.backgroundOpacity = (std::clamp)(settings_.backgroundOpacity, 0.05f, 1.0f);
+    settings_.width = ClampOverlayWidth(settings_.width);
+    settings_.height = ClampOverlayHeight(settings_.height);
 
     render::RenderConfig cfg{};
     cfg.barCount = settings_.barCount;
@@ -265,6 +289,56 @@ void OverlayWindow::ApplyRenderConfig() {
     RECT rc{};
     GetWindowRect(hwnd_, &rc);
     SetWindowPos(hwnd_, nullptr, rc.left, rc.top, settings_.width, settings_.height, SWP_NOZORDER | SWP_NOACTIVATE);
+}
+
+LRESULT OverlayWindow::HandleHitTest(const LPARAM lParam) const {
+    if (clickThrough_) {
+        return HTTRANSPARENT;
+    }
+
+    RECT windowRect{};
+    GetWindowRect(hwnd_, &windowRect);
+
+    const int x = GET_X_LPARAM(lParam);
+    const int y = GET_Y_LPARAM(lParam);
+
+    POINT cursor{x - windowRect.left, y - windowRect.top};
+    if (renderer_.HitTestCloseButton(static_cast<float>(cursor.x), static_cast<float>(cursor.y))) {
+        return HTCLIENT;
+    }
+
+    const bool left = x >= windowRect.left && x < windowRect.left + kResizeBorderPx;
+    const bool right = x < windowRect.right && x >= windowRect.right - kResizeBorderPx;
+    const bool top = y >= windowRect.top && y < windowRect.top + kResizeBorderPx;
+    const bool bottom = y < windowRect.bottom && y >= windowRect.bottom - kResizeBorderPx;
+
+    if (top && left) return HTTOPLEFT;
+    if (top && right) return HTTOPRIGHT;
+    if (bottom && left) return HTBOTTOMLEFT;
+    if (bottom && right) return HTBOTTOMRIGHT;
+    if (left) return HTLEFT;
+    if (right) return HTRIGHT;
+    if (top) return HTTOP;
+    if (bottom) return HTBOTTOM;
+
+    return HTCAPTION;
+}
+
+void OverlayWindow::UpdateTrackedWindowSize() {
+    if (!hwnd_) {
+        return;
+    }
+
+    RECT rc{};
+    GetWindowRect(hwnd_, &rc);
+    settings_.width = ClampOverlayWidth(rc.right - rc.left);
+    settings_.height = ClampOverlayHeight(rc.bottom - rc.top);
+}
+
+void OverlayWindow::NotifySettingsChanged() {
+    if (onSettingsChanged_) {
+        onSettingsChanged_();
+    }
 }
 
 } // namespace rv::app

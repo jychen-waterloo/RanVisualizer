@@ -1,6 +1,6 @@
-# RanVisualizer - Configuration Milestone
+# RanVisualizer - Resize Refinement Milestone
 
-This milestone adds practical live configuration to the existing Windows overlay visualizer while preserving:
+This milestone extends the existing Windows audio visualizer overlay with **borderless edge/corner resizing** while preserving:
 
 - WASAPI loopback capture
 - analyzer pipeline
@@ -8,37 +8,43 @@ This milestone adds practical live configuration to the existing Windows overlay
 - tray integration
 - hotkeys
 - hover close button
+- existing theme/config system
 
-## New user-facing settings
+## What's new
 
-All of the following are now configurable and persisted:
+- The borderless overlay can now be resized from all edges and corners in **interactive mode**.
+- Width and height are persisted in the existing settings file and restored on startup.
+- Renderer layout updates live while resizing (bars, backdrop, and controls relayout to current client size).
 
-- **Window size** (small / medium / large presets)
-- **Theme preset**
-  - Minimal Cyan
-  - Neon Purple
-  - Warm Amber
-  - Soft Green
-  - Monochrome Ice
-- **Bar color** (manual palette path)
-- **Background color** (manual palette path)
-- **Overlay/background opacity**
-- **Spectrum bar count** (24 / 40 / 64 / 96)
-- **Motion intensity** (Calm / Balanced / Energetic)
+## Resize behavior
 
-## How to change settings
+- **Interactive mode**: resize hit-testing is enabled and works from:
+  - left / right / top / bottom edges
+  - top-left / top-right / bottom-left / bottom-right corners
+- **Click-through mode**: resize interaction is disabled (window remains non-interactive).
+- Dragging the non-control body still moves the overlay.
+- Hover close button keeps priority over resize hit regions near top-right control area.
 
-Use the **system tray icon** (right click) and the compact submenus:
+## Layout and spectrum semantics
 
-- Window size
-- Spectrum bars
-- Motion feel
-- Theme preset
-- Bar color
-- Background color
-- Overlay opacity
+Resize changes only presentation/layout:
 
-Most options apply **live** immediately.
+- configured bar count remains fixed
+- analyzer output meaning remains unchanged
+- normalized band values remain normalized
+- final bar pixel height is `normalizedValue * currentDrawableHeight`
+
+So a taller window gives more pixel range without changing normalized amplitude semantics.
+
+## Size constraints
+
+To keep the overlay practical and polished during borderless resizing:
+
+- minimum width: **280 px**
+- minimum height: **120 px**
+- maximum height: **900 px**
+
+(Width upper bounds are additionally clamped by config loading logic.)
 
 ## Persistence and config file
 
@@ -56,26 +62,12 @@ Fallback path (if AppData resolution fails):
 ./config/settings.json
 ```
 
-If the config is missing or partially invalid, safe defaults are used.
+Persisted size fields:
 
-## Motion intensity mapping (real behavior, not random)
+- `width`
+- `height`
 
-`motionIntensity` drives a runtime motion profile used by the renderer:
-
-- higher intensity -> faster attack
-- higher intensity -> faster release
-- higher intensity -> slower visible peak drop
-- higher intensity -> more visual gain
-- higher intensity -> extra low-end emphasis
-- higher intensity -> faster accent response
-
-This makes low intensity calm/smooth and high intensity punchier without adding random jitter.
-
-## Bar count remapping strategy
-
-Analyzer output is remapped to the selected visible bar count using **weighted interval sampling** across source bands.
-
-This avoids harsh drop/duplicate artifacts and keeps spacing/energy distribution intentional for both low and high bar counts.
+If the config is missing or partially invalid, safe defaults and clamped values are used.
 
 ## Build (Visual Studio 2022 + CMake)
 
@@ -92,6 +84,6 @@ build/Release/RanVisualizerCapture.exe
 
 ## Known limitations
 
-- Settings UI is intentionally tray-driven (compact) rather than a full dialog window.
-- Color selection uses curated palette options (plus preset themes) instead of a full color picker.
+- Resize interaction is intentionally disabled in click-through mode.
+- No automatic bar-count scaling based on width in this milestone (bar count stays user-configured).
 - Linux CI/build environments without Windows SDK cannot compile this target (Windows native app).

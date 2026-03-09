@@ -179,8 +179,8 @@ bool Settings::Load(SettingsData& data) const {
     if (FindTokenValue(text, "barColor", value)) parsed.barColor = ParseColor(value, parsed.barColor);
     if (FindTokenValue(text, "backgroundColor", value)) parsed.backgroundColor = ParseColor(value, parsed.backgroundColor);
 
-    parsed.width = std::clamp(parsed.width, 240, 2000);
-    parsed.height = std::clamp(parsed.height, 100, 1200);
+    parsed.width = std::clamp(parsed.width, 280, 2000);
+    parsed.height = std::clamp(parsed.height, 120, 900);
     parsed.backgroundOpacity = std::clamp(parsed.backgroundOpacity, 0.05f, 1.0f);
     parsed.barOpacity = std::clamp(parsed.barOpacity, 0.1f, 1.0f);
     parsed.motionIntensity = std::clamp(parsed.motionIntensity, 0.0f, 1.0f);
