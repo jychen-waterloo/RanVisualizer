@@ -56,7 +56,8 @@ int App::Run(HINSTANCE instance, const int showCmd) {
         return 1;
     }
 
-    if (!window_.Create(instance, showCmd)) {
+    (void)showCmd;
+    if (!window_.Create(instance)) {
         ShutdownAudio();
         return 1;
     }

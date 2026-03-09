@@ -1,79 +1,51 @@
-# RanVisualizer Task 3 - Windowed Direct2D Spectrum Renderer
+# RanVisualizer Task 4 - Desktop Overlay Visualizer
 
-This repository now contains **Task 1 + Task 2 + Task 3** for the Windows audio visualizer project.
+This repository now contains **Task 1 + Task 2 + Task 3 + Task 4** for the Windows audio visualizer project.
 
-- Task 1: WASAPI loopback capture + default-output-device reinitialize handling.
-- Task 2: FFT/log-band analyzer with smoothing + peaks + summary energies.
-- Task 3 (this milestone): a polished **normal Win32 resizable desktop window** rendered with **Direct2D**.
+- Task 1: WASAPI loopback capture + endpoint reinitialize behavior
+- Task 2: FFT/log-band analyzer with smoothing + peaks
+- Task 3: smooth Direct2D spectrum renderer
+- Task 4 (this milestone): borderless topmost semi-transparent desktop overlay
 
-> This is intentionally **not** the final transparent corner overlay yet.
+## What Task 4 adds
 
-## What Task 3 adds
+- Replaces the old normal resizable window with a compact overlay shell.
+- Overlay window is borderless (`WS_POPUP`), topmost, and tool-window styled.
+- Default placement is bottom-right with margin from work area edges.
+- Renderer now targets a premultiplied-alpha layered window path.
+- Transparent canvas + subtle rounded backdrop plate to keep readability on mixed wallpapers.
+- Drag-to-reposition behavior while interactive.
+- Minimal click-through toggle for testing:
+  - `F8` global poll toggle (works even when click-through is active)
+  - right-click context menu toggle when interactive
 
-- Standard overlapped Win32 window (`Audio Visualizer - Task 3`)
-- Per-monitor DPI-aware desktop app shell
-- Dedicated render loop targeting smooth frame updates (~60 FPS feel)
-- Direct2D renderer with:
-  - dark background
-  - rounded vertical bars from Task 2 smoothed log bands
-  - peak caps with soft decay
-  - subtle glow underlay
-  - calm silence behavior
-- Optional lightweight debug overlay text (FPS/loudness/silence/band count)
-- Clean modular split between app lifecycle, windowing, layout, animation state, and rendering theme
+## Rendering/composition path used
 
-## Why this is still a normal window
+Task 4 keeps the Task 3 bar/peak animation logic and moves presentation to a **layered-window composition path**:
 
-Task 3 is a quality checkpoint for animation and visual design in a robust renderer path. It deliberately avoids overlay-specific behavior:
+- Direct2D `ID2D1DCRenderTarget` draws into a 32-bit premultiplied DIB.
+- The frame is presented with `UpdateLayeredWindow(..., ULW_ALPHA)`.
+- Fully transparent clear color is used each frame to avoid opaque black artifacts.
 
-- no transparent layered window behavior
-- no always-on-top
-- no click-through
-- no tray icon
-- no hotkeys
+This is stable on Windows 10/11 and preserves smooth animation while providing true alpha-composited overlay behavior.
 
-Those are deferred to Task 4.
+## Interaction model (Task 4 scope)
 
-## Rendering architecture overview
+- Starts in **interactive mode** (not click-through).
+- Drag overlay from anywhere in the visual area.
+- Toggle click-through for testing with `F8`.
+- Toggle is reversible without killing the app.
 
-- `src/app/App.*`
-  - process DPI setup
-  - COM lifetime
-  - capture/notifier startup and shutdown
-  - message pump + frame pacing
-- `src/app/MainWindow.*`
-  - Win32 class/window creation
-  - resize/destroy handling
-  - fetch latest analyzer snapshot each frame
-- `src/render/Renderer.*`
-  - Direct2D/DirectWrite resource management
-  - draw background, bars, peaks, glow, debug text
-  - handle `D2DERR_RECREATE_TARGET`
-- `src/render/Layout.*`
-  - responsive bar geometry for current client size
-- `src/render/AnimationState.*`
-  - frame-to-frame interpolation/easing for smooth motion
-- `src/render/RenderTypes.h`
-  - render snapshot/timing model
+No tray icon/global hotkeys/settings UI are introduced in this task.
 
-## How renderer consumes analyzer output
+## Architecture overview
 
-`LoopbackCapture` now publishes the most recent `AnalysisFrame`. The render thread reads this latest snapshot per frame and converts it into a render model:
+- `src/app/App.*` - process lifetime, COM/audio setup, frame loop
+- `src/app/OverlayWindow.*` - overlay window creation, drag/hit testing, click-through state
+- `src/render/Renderer.*` - layered render target creation, frame draw, alpha presentation
+- `src/platform/WindowStyles.*` - overlay style constants and click-through style switching
 
-- primary bars: `smoothedBandValues`
-- secondary peak caps: `peakBandValues`
-- accent response: `loudness + bassEnergy`
-- silence calming: `isSilentLike` influences decay
-
-No raw FFT bins are rendered directly.
-
-## Resize and frame update behavior
-
-- Render target is resized on `WM_SIZE`.
-- Bar layout is rebuilt from current client size each frame (no stretched bitmap caching).
-- Message pump is decoupled from analysis cadence.
-- Renderer runs continuously with small sleep-based pacing and interpolated animation state.
-- Minimized windows skip rendering work.
+Task 1 capture and Task 2 analyzer integration remain unchanged and continue feeding the renderer via latest-frame snapshots.
 
 ## Build (Visual Studio 2022 + CMake)
 
@@ -94,12 +66,12 @@ build/Release/RanVisualizerCapture.exe
 .\build\Release\RanVisualizerCapture.exe
 ```
 
-## Known limitations
+## Current limitations (before Task 5)
 
-- Renderer currently targets a normal window only (no translucent overlay behavior yet).
-- No settings UI/config surface yet.
-- Debug overlay is compile-time behavior in app wiring (easy to toggle in code).
+- No tray icon yet
+- No global hotkey registration system yet
+- No formal config/settings persistence yet
 
-## What Task 4 will add
+## What Task 5 will add next
 
-Task 4 will reuse this renderer/app structure and introduce overlay behavior (transparent layered presentation, topmost/click-through policy, and related windowing mechanics) without replacing the Task 2 analysis pipeline.
+Task 5 will build on this overlay foundation with tray controls, polished toggle UX, and structured persistence/configuration.
