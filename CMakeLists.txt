@@ -10,8 +10,8 @@ add_executable(RanVisualizerCapture WIN32
     src/main.cpp
     src/app/App.h
     src/app/App.cpp
-    src/app/MainWindow.h
-    src/app/MainWindow.cpp
+    src/app/OverlayWindow.h
+    src/app/OverlayWindow.cpp
     src/render/Renderer.h
     src/render/Renderer.cpp
     src/render/RenderTypes.h
@@ -21,6 +21,8 @@ add_executable(RanVisualizerCapture WIN32
     src/render/Theme.cpp
     src/render/AnimationState.h
     src/render/AnimationState.cpp
+    src/platform/WindowStyles.h
+    src/platform/WindowStyles.cpp
     src/audio/LoopbackCapture.cpp
     src/audio/LoopbackCapture.h
     src/audio/DeviceNotifier.cpp

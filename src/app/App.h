@@ -1,6 +1,6 @@
 #pragma once
 
-#include "MainWindow.h"
+#include "OverlayWindow.h"
 #include "../audio/DeviceNotifier.h"
 
 #include <memory>
@@ -16,7 +16,7 @@ private:
     void ShutdownAudio();
 
     audio::LoopbackCapture capture_;
-    MainWindow window_{capture_, true};
+    OverlayWindow window_{capture_, false};
     std::unique_ptr<audio::DeviceNotifier, void (*)(audio::DeviceNotifier*)> notifier_{nullptr, [](audio::DeviceNotifier* p) {
         if (p) {
             p->Release();
