@@ -2,6 +2,7 @@
 
 #include <comdef.h>
 #include <cstdio>
+#include <cwchar>
 
 namespace rv::util {
 
@@ -24,13 +25,16 @@ std::string WStringToUtf8(const wchar_t* text) {
         return {};
     }
 
-    const int needed = WideCharToMultiByte(CP_UTF8, 0, text, -1, nullptr, 0, nullptr, nullptr);
+    const int sourceLen = static_cast<int>(std::wcslen(text));
+    const int needed = WideCharToMultiByte(CP_UTF8, 0, text, sourceLen, nullptr, 0, nullptr, nullptr);
     if (needed <= 0) {
         return {};
     }
 
-    std::string utf8(static_cast<size_t>(needed - 1), '\0');
-    WideCharToMultiByte(CP_UTF8, 0, text, -1, utf8.data(), needed, nullptr, nullptr);
+    std::string utf8(static_cast<size_t>(needed), '\0');
+    if (WideCharToMultiByte(CP_UTF8, 0, text, sourceLen, utf8.data(), needed, nullptr, nullptr) <= 0) {
+        return {};
+    }
     return utf8;
 }
 

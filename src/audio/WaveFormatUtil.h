@@ -1,6 +1,6 @@
 #pragma once
 
-#include <mmreg.h>
+#include <Audioclient.h>
 
 #include <cstddef>
 #include <cstdint>

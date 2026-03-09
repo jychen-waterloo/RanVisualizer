@@ -1,9 +1,11 @@
 #include "WaveFormatUtil.h"
 
+#include <Windows.h>
 #include <Audioclient.h>
-#include <mmreg.h>
 
 #include <algorithm>
+#include <cstdio>
+#include <cwchar>
 #include <cmath>
 #include <cstring>
 #include <iomanip>
@@ -29,13 +31,16 @@ std::string GuidToString(const GUID& guid) {
         guid.Data4[6],
         guid.Data4[7]);
 
-    const int bytes = WideCharToMultiByte(CP_UTF8, 0, wide, -1, nullptr, 0, nullptr, nullptr);
+    const int sourceLen = static_cast<int>(std::wcslen(wide));
+    const int bytes = WideCharToMultiByte(CP_UTF8, 0, wide, sourceLen, nullptr, 0, nullptr, nullptr);
     if (bytes <= 0) {
         return "<guid-conversion-failed>";
     }
 
-    std::string out(static_cast<size_t>(bytes - 1), '\0');
-    WideCharToMultiByte(CP_UTF8, 0, wide, -1, out.data(), bytes, nullptr, nullptr);
+    std::string out(static_cast<size_t>(bytes), '\0');
+    if (WideCharToMultiByte(CP_UTF8, 0, wide, sourceLen, out.data(), bytes, nullptr, nullptr) <= 0) {
+        return "<guid-conversion-failed>";
+    }
     return out;
 }
 
