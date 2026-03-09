@@ -4,13 +4,18 @@
 #include <Mmdeviceapi.h>
 #include <wrl/client.h>
 
+#include "../dsp/AnalysisFrame.h"
+#include "../dsp/SpectrumAnalyzer.h"
+
 #include <atomic>
 #include <chrono>
 #include <condition_variable>
 #include <cstdint>
+#include <deque>
 #include <mutex>
 #include <string>
 #include <thread>
+#include <vector>
 
 namespace rv::audio {
 
@@ -43,13 +48,23 @@ private:
     void PrintPeriodicStatus(const RuntimeStats& stats) const;
     std::string GetDeviceFriendlyName(IMMDevice* device) const;
     void CaptureThreadMain();
+    void AnalysisThreadMain();
 
     std::atomic<bool> running_{false};
     std::atomic<bool> reinitializeRequested_{false};
     std::thread captureThread_;
+    std::thread analysisThread_;
 
     mutable std::mutex stateMutex_;
     std::wstring currentEndpointId_;
+
+    std::mutex analysisMutex_;
+    std::condition_variable analysisCv_;
+    std::deque<float> analysisQueue_;
+    uint32_t analysisSampleRate_{0};
+    bool analyzerReconfigureRequested_{false};
+    dsp::SpectrumAnalyzer analyzer_;
+    std::vector<float> conversionScratch_;
 
     Microsoft::WRL::ComPtr<IMMDeviceEnumerator> deviceEnumerator_;
     Microsoft::WRL::ComPtr<IMMDevice> currentDevice_;

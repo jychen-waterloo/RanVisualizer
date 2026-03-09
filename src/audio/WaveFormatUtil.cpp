@@ -11,7 +11,6 @@
 #include <iomanip>
 #include <sstream>
 
-
 namespace {
 
 std::string GuidToString(const GUID& guid) {
@@ -176,6 +175,44 @@ void ComputeLevelsForBuffer(
     default:
         outSampleCount = 0;
         break;
+    }
+}
+
+void ConvertToNormalizedMono(
+    const BYTE* data,
+    const uint32_t frames,
+    const FormatInfo& format,
+    std::vector<float>& outMonoSamples) {
+    outMonoSamples.assign(frames, 0.0f);
+    if (data == nullptr || frames == 0 || format.channels == 0) {
+        return;
+    }
+
+    auto readSample = [&](uint32_t frameIndex, uint16_t channelIndex) -> float {
+        const uint64_t idx = static_cast<uint64_t>(frameIndex) * format.channels + channelIndex;
+        switch (format.sampleFormat) {
+        case SampleFormat::Float32:
+            return reinterpret_cast<const float*>(data)[idx];
+        case SampleFormat::Pcm16: {
+            constexpr float norm = 1.0f / 32768.0f;
+            return static_cast<float>(reinterpret_cast<const int16_t*>(data)[idx]) * norm;
+        }
+        case SampleFormat::Pcm24In32: {
+            constexpr float norm = 1.0f / 8388608.0f;
+            const int32_t v = reinterpret_cast<const int32_t*>(data)[idx] >> 8;
+            return static_cast<float>(v) * norm;
+        }
+        default:
+            return 0.0f;
+        }
+    };
+
+    for (uint32_t frame = 0; frame < frames; ++frame) {
+        float sum = 0.0f;
+        for (uint16_t channel = 0; channel < format.channels; ++channel) {
+            sum += readSample(frame, channel);
+        }
+        outMonoSamples[frame] = std::clamp(sum / static_cast<float>(format.channels), -1.0f, 1.0f);
     }
 }
 

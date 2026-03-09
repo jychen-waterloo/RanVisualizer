@@ -7,6 +7,7 @@
 #include <Functiondiscoverykeys_devpkey.h>
 #include <avrt.h>
 
+#include <algorithm>
 #include <cmath>
 #include <iomanip>
 #include <sstream>
@@ -14,7 +15,26 @@
 namespace {
 
 constexpr auto kStatusPrintPeriod = std::chrono::milliseconds(500);
-constexpr auto kCaptureSleepPeriod = std::chrono::milliseconds(10);
+constexpr auto kCaptureSleepPeriod = std::chrono::milliseconds(8);
+constexpr auto kAnalysisPrintPeriod = std::chrono::milliseconds(300);
+
+std::string MiniBars(const std::vector<float>& bands) {
+    static constexpr const char* kLevels = " .:-=+*#%@";
+    if (bands.empty()) {
+        return "<no-bands>";
+    }
+
+    std::string out;
+    const size_t sampleCount = std::min<size_t>(16, bands.size());
+    out.reserve(sampleCount);
+    for (size_t i = 0; i < sampleCount; ++i) {
+        const size_t idx = (i * bands.size()) / sampleCount;
+        const float v = std::clamp(bands[idx], 0.0f, 1.0f);
+        const size_t level = static_cast<size_t>(v * 9.0f);
+        out.push_back(kLevels[level]);
+    }
+    return out;
+}
 
 } // namespace
 
@@ -33,6 +53,7 @@ bool LoopbackCapture::Start() {
     }
 
     captureThread_ = std::thread(&LoopbackCapture::CaptureThreadMain, this);
+    analysisThread_ = std::thread(&LoopbackCapture::AnalysisThreadMain, this);
     return true;
 }
 
@@ -42,8 +63,13 @@ void LoopbackCapture::Stop() {
         return;
     }
 
+    analysisCv_.notify_all();
+
     if (captureThread_.joinable()) {
         captureThread_.join();
+    }
+    if (analysisThread_.joinable()) {
+        analysisThread_.join();
     }
 }
 
@@ -108,8 +134,6 @@ bool LoopbackCapture::InitializeForDefaultDevice() {
         Logger::Instance().Warn("IAudioClient::GetDevicePeriod failed: " + HResultToString(hr));
     }
 
-    // Timer-driven polling is chosen for this validation tool. It is simpler to reason about
-    // and robust enough for proving loopback packet continuity and level tracking.
     hr = audioClient_->Initialize(
         AUDCLNT_SHAREMODE_SHARED,
         AUDCLNT_STREAMFLAGS_LOOPBACK,
@@ -146,6 +170,14 @@ bool LoopbackCapture::InitializeForDefaultDevice() {
         Logger::Instance().Error("IAudioClient::Start failed: " + HResultToString(hr));
         return false;
     }
+
+    {
+        std::lock_guard<std::mutex> lock(analysisMutex_);
+        analysisSampleRate_ = mixFormat_->nSamplesPerSec;
+        analysisQueue_.clear();
+        analyzerReconfigureRequested_ = true;
+    }
+    analysisCv_.notify_one();
 
     Logger::Instance().Info("Loopback capture stream started.");
     return true;
@@ -215,6 +247,23 @@ bool LoopbackCapture::ReadAvailablePackets(RuntimeStats& stats) {
             stats.levelSamples += sampleCount;
         }
 
+        if (formatInfo.sampleFormat != SampleFormat::Unsupported) {
+            ConvertToNormalizedMono(data, frames, formatInfo, conversionScratch_);
+            if (silent) {
+                std::fill(conversionScratch_.begin(), conversionScratch_.end(), 0.0f);
+            }
+            {
+                std::lock_guard<std::mutex> lock(analysisMutex_);
+                for (float s : conversionScratch_) {
+                    analysisQueue_.push_back(s);
+                }
+                if (analysisQueue_.size() > formatInfo.sampleRate * 2) {
+                    analysisQueue_.erase(analysisQueue_.begin(), analysisQueue_.begin() + static_cast<std::ptrdiff_t>(formatInfo.sampleRate));
+                }
+            }
+            analysisCv_.notify_one();
+        }
+
         hr = captureClient_->ReleaseBuffer(frames);
         if (FAILED(hr)) {
             util::Logger::Instance().Error("IAudioCaptureClient::ReleaseBuffer failed: " + util::HResultToString(hr));
@@ -245,7 +294,7 @@ void LoopbackCapture::PrintPeriodicStatus(const RuntimeStats& stats) const {
 
     std::ostringstream oss;
     oss << std::fixed << std::setprecision(2);
-    oss << "[t=" << elapsed << "s] packets=" << stats.packets << " frames=" << stats.frames
+    oss << "[capture t=" << elapsed << "s] packets=" << stats.packets << " frames=" << stats.frames
         << " rms=";
     oss << std::setprecision(4) << rms << " peak=" << stats.peakAbs
         << " silent=" << (stats.lastPacketSilent ? "yes" : "no")
@@ -277,6 +326,62 @@ std::string LoopbackCapture::GetDeviceFriendlyName(IMMDevice* device) const {
     std::string out = util::WStringToUtf8(value.pwszVal);
     PropVariantClear(&value);
     return out;
+}
+
+void LoopbackCapture::AnalysisThreadMain() {
+    std::vector<float> localSamples;
+    localSamples.reserve(8192);
+
+    auto lastPrint = std::chrono::steady_clock::now();
+
+    while (running_.load()) {
+        {
+            std::unique_lock<std::mutex> lock(analysisMutex_);
+            analysisCv_.wait_for(lock, std::chrono::milliseconds(50), [&] {
+                return !running_.load() || !analysisQueue_.empty() || analyzerReconfigureRequested_;
+            });
+
+            if (!running_.load()) {
+                break;
+            }
+
+            if (analyzerReconfigureRequested_ && analysisSampleRate_ > 0) {
+                dsp::SpectrumAnalyzer::Config config;
+                analyzer_.Configure(analysisSampleRate_, config);
+                analyzer_.Reset();
+                analyzerReconfigureRequested_ = false;
+            }
+
+            const size_t take = std::min<size_t>(analysisQueue_.size(), 4096);
+            localSamples.clear();
+            localSamples.reserve(take);
+            for (size_t i = 0; i < take; ++i) {
+                localSamples.push_back(analysisQueue_.front());
+                analysisQueue_.pop_front();
+            }
+        }
+
+        if (!localSamples.empty()) {
+            analyzer_.PushSamples(localSamples.data(), localSamples.size());
+        }
+
+        const auto now = std::chrono::steady_clock::now();
+        if (now - lastPrint >= kAnalysisPrintPeriod) {
+            dsp::AnalysisFrame frame;
+            if (analyzer_.ConsumeLatestFrame(frame)) {
+                std::ostringstream oss;
+                oss << std::fixed << std::setprecision(3);
+                oss << "[analysis] loud=" << frame.loudness
+                    << " bass=" << frame.bassEnergy
+                    << " mid=" << frame.midEnergy
+                    << " treb=" << frame.trebleEnergy
+                    << " silent=" << (frame.isSilentLike ? "yes" : "no")
+                    << " bars=" << MiniBars(frame.smoothedBandValues);
+                util::Logger::Instance().Info(oss.str());
+            }
+            lastPrint = now;
+        }
+    }
 }
 
 void LoopbackCapture::CaptureThreadMain() {
@@ -321,6 +426,7 @@ void LoopbackCapture::CaptureThreadMain() {
     }
 
     TeardownCapture();
+    analysisCv_.notify_all();
     util::Logger::Instance().Info("Loopback capture stopped.");
 }
 

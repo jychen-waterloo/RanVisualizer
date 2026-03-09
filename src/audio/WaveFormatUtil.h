@@ -5,6 +5,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <string>
+#include <vector>
 
 namespace rv::audio {
 
@@ -37,5 +38,11 @@ void ComputeLevelsForBuffer(
     double& outSumSquares,
     float& outPeakAbs,
     uint64_t& outSampleCount);
+
+void ConvertToNormalizedMono(
+    const BYTE* data,
+    uint32_t frames,
+    const FormatInfo& format,
+    std::vector<float>& outMonoSamples);
 
 } // namespace rv::audio

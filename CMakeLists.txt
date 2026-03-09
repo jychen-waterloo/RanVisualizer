@@ -14,6 +14,17 @@ add_executable(RanVisualizerCapture
     src/audio/DeviceNotifier.h
     src/audio/WaveFormatUtil.cpp
     src/audio/WaveFormatUtil.h
+    src/dsp/AnalysisFrame.h
+    src/dsp/Window.cpp
+    src/dsp/Window.h
+    src/dsp/Fft.cpp
+    src/dsp/Fft.h
+    src/dsp/BandMapper.cpp
+    src/dsp/BandMapper.h
+    src/dsp/Smoothing.cpp
+    src/dsp/Smoothing.h
+    src/dsp/SpectrumAnalyzer.cpp
+    src/dsp/SpectrumAnalyzer.h
     src/util/ComUtil.cpp
     src/util/ComUtil.h
     src/util/Logger.cpp
