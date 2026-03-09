@@ -81,6 +81,17 @@ void LoopbackCapture::RequestReinitialize(const std::wstring& endpointIdHint) {
     reinitializeRequested_.store(true);
 }
 
+
+bool LoopbackCapture::GetLatestAnalysisFrame(dsp::AnalysisFrame& outFrame) const {
+    std::lock_guard<std::mutex> lock(latestFrameMutex_);
+    if (!hasLatestFrame_) {
+        return false;
+    }
+
+    outFrame = latestFrame_;
+    return true;
+}
+
 bool LoopbackCapture::InitializeForDefaultDevice() {
     using util::HResultToString;
     using util::Logger;
@@ -176,6 +187,10 @@ bool LoopbackCapture::InitializeForDefaultDevice() {
         analysisSampleRate_ = mixFormat_->nSamplesPerSec;
         analysisQueue_.clear();
         analyzerReconfigureRequested_ = true;
+    }
+    {
+        std::lock_guard<std::mutex> lock(latestFrameMutex_);
+        hasLatestFrame_ = false;
     }
     analysisCv_.notify_one();
 
@@ -369,6 +384,12 @@ void LoopbackCapture::AnalysisThreadMain() {
         if (now - lastPrint >= kAnalysisPrintPeriod) {
             dsp::AnalysisFrame frame;
             if (analyzer_.ConsumeLatestFrame(frame)) {
+                {
+                    std::lock_guard<std::mutex> lock(latestFrameMutex_);
+                    latestFrame_ = frame;
+                    hasLatestFrame_ = true;
+                }
+
                 std::ostringstream oss;
                 oss << std::fixed << std::setprecision(3);
                 oss << "[analysis] loud=" << frame.loudness
