@@ -22,6 +22,8 @@ add_executable(RanVisualizerCapture WIN32
     src/render/Renderer.h
     src/render/Renderer.cpp
     src/render/RenderTypes.h
+    src/render/RenderConfig.h
+    src/render/RenderConfig.cpp
     src/render/Layout.h
     src/render/OverlayControls.h
     src/render/OverlayControls.cpp

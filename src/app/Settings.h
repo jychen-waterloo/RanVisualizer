@@ -1,5 +1,7 @@
 #pragma once
 
+#include "../render/Theme.h"
+
 #include <windows.h>
 
 #include <filesystem>
@@ -15,6 +17,13 @@ struct SettingsData {
     bool clickThrough{false};
     bool overlayVisible{true};
     bool startInteractive{true};
+    size_t barCount{64};
+    float backgroundOpacity{0.34f};
+    float barOpacity{0.95f};
+    float motionIntensity{0.6f};
+    render::ThemePreset themePreset{render::ThemePreset::MinimalCyan};
+    D2D1_COLOR_F barColor{0.26f, 0.72f, 0.95f, 0.95f};
+    D2D1_COLOR_F backgroundColor{0.03f, 0.05f, 0.08f, 0.34f};
 };
 
 class Settings {
