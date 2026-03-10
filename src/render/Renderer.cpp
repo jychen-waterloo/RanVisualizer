@@ -7,8 +7,8 @@
 namespace rv::render {
 
 namespace {
-constexpr float kMainBarHeightRatio = 0.80f;
-constexpr float kPeakLineInsetPx = 1.0f;
+constexpr float kTopHeadroomRatio = 0.08f;
+constexpr float kPeakLineGapPx = 1.0f;
 }
 
 Renderer::Renderer()
@@ -225,14 +225,21 @@ void Renderer::DrawBars(const BarLayout& layout) {
 
     for (size_t i = 0; i < bars.size() && i < layout.barRects.size(); ++i) {
         const auto baseRect = layout.barRects[i];
-        const float drawableHeight = baseRect.bottom - baseRect.top;
-        const float mainRangeHeight = drawableHeight * kMainBarHeightRatio;
+        const float contentHeight = baseRect.bottom - baseRect.top;
+        const float drawableHeight = contentHeight * (1.0f - kTopHeadroomRatio);
 
-        const float smoothedBand = std::clamp(bars[i], 0.0f, 1.0f);
-        const float peakBand = std::clamp(i < peaks.size() ? peaks[i] : smoothedBand, 0.0f, 1.0f);
+        const float normalizedBarValue = std::clamp(bars[i], 0.0f, 1.0f);
+        const float normalizedPeakValue = std::clamp(i < peaks.size() ? peaks[i] : normalizedBarValue, 0.0f, 1.0f);
 
-        const float barHeightPx = mainRangeHeight * smoothedBand;
+        const float barHeightPx = normalizedBarValue * drawableHeight;
+        const float peakHeightPx = normalizedPeakValue * drawableHeight;
+
         const float barTopY = baseRect.bottom - barHeightPx;
+        float peakTopY = baseRect.bottom - peakHeightPx;
+        if (normalizedPeakValue > normalizedBarValue + 0.0005f) {
+            peakTopY = std::min(peakTopY, barTopY - kPeakLineGapPx);
+        }
+        peakTopY = std::max(peakTopY, baseRect.top + layout.peakHeight);
 
         const D2D1_ROUNDED_RECT rr{D2D1::RectF(baseRect.left, barTopY, baseRect.right, baseRect.bottom), layout.barRadius,
             layout.barRadius};
@@ -241,13 +248,17 @@ void Renderer::DrawBars(const BarLayout& layout) {
         const float glowTop = std::max(layout.topY, barTopY - 12.0f);
         renderTarget_->FillRectangle(D2D1::RectF(baseRect.left, glowTop, baseRect.right, barTopY + 4.0f), glowBrush_.Get());
 
-        float peakHeightPx = drawableHeight * peakBand;
-        peakHeightPx = std::max(peakHeightPx, barHeightPx + layout.peakHeight + kPeakLineInsetPx);
-        peakHeightPx = std::min(peakHeightPx, drawableHeight);
-        const float peakY = baseRect.bottom - peakHeightPx;
         renderTarget_->FillRoundedRectangle(
-            D2D1::RoundedRect(D2D1::RectF(baseRect.left, peakY - layout.peakHeight, baseRect.right, peakY), 1.4f, 1.4f),
+            D2D1::RoundedRect(D2D1::RectF(baseRect.left, peakTopY - layout.peakHeight, baseRect.right, peakTopY), 1.4f, 1.4f),
             peakBrush_.Get());
+
+#if defined(_DEBUG)
+        assert(drawableHeight <= contentHeight + 0.001f);
+        assert(normalizedBarValue >= 0.0f && normalizedBarValue <= 1.0f);
+        assert(normalizedPeakValue >= 0.0f && normalizedPeakValue <= 1.0f);
+        assert(std::abs((baseRect.bottom - barTopY) - (normalizedBarValue * drawableHeight)) < 0.01f);
+        assert(std::abs((baseRect.bottom - (baseRect.bottom - peakHeightPx)) - (normalizedPeakValue * drawableHeight)) < 0.01f);
+#endif
     }
 }
 
@@ -256,9 +267,9 @@ void Renderer::DrawBarsFast(const BarLayout& layout) {
 
     for (size_t i = 0; i < bars.size() && i < layout.barRects.size(); ++i) {
         const auto baseRect = layout.barRects[i];
-        const float drawableHeight = baseRect.bottom - baseRect.top;
-        const float mainRangeHeight = drawableHeight * kMainBarHeightRatio;
-        const float barHeightPx = mainRangeHeight * std::clamp(bars[i], 0.0f, 1.0f);
+        const float contentHeight = baseRect.bottom - baseRect.top;
+        const float drawableHeight = contentHeight * (1.0f - kTopHeadroomRatio);
+        const float barHeightPx = drawableHeight * std::clamp(bars[i], 0.0f, 1.0f);
         const float top = baseRect.bottom - barHeightPx;
         renderTarget_->FillRectangle(D2D1::RectF(baseRect.left, top, baseRect.right, baseRect.bottom), barBrush_.Get());
     }
@@ -356,7 +367,7 @@ void Renderer::Render(const RenderSnapshot& snapshot, const FrameTiming& timing,
                 }
             }
             avgBar /= static_cast<float>(bars.size());
-            const float avgMainOccupancy = avgBar * kMainBarHeightRatio;
+            const float avgMainOccupancy = avgBar * (1.0f - kTopHeadroomRatio);
             if (maxBar > 1.02f || maxPeak > 1.02f || (avgMainOccupancy > 0.74f && nearMainCeiling > bars.size() / 3)) {
                 OutputDebugStringW(L"[RanVisualizer] render-range warning: bars/peaks nearing ceiling too often\n");
             }
