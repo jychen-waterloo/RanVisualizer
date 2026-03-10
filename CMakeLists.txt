@@ -6,7 +6,9 @@ set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
-add_executable(RanVisualizerCapture WIN32
+set(RV_APP_TARGET RanVisualizerCapture)
+
+add_executable(${RV_APP_TARGET} WIN32
     src/main.cpp
     src/app/App.h
     src/app/App.cpp
@@ -57,9 +59,9 @@ add_executable(RanVisualizerCapture WIN32
     src/util/Logger.h
 )
 
-target_compile_definitions(RanVisualizerCapture PRIVATE UNICODE _UNICODE NOMINMAX)
+target_compile_definitions(${RV_APP_TARGET} PRIVATE UNICODE _UNICODE NOMINMAX)
 
-target_link_libraries(RanVisualizerCapture PRIVATE
+target_link_libraries(${RV_APP_TARGET} PRIVATE
     ole32
     avrt
     uuid
@@ -70,7 +72,25 @@ target_link_libraries(RanVisualizerCapture PRIVATE
 )
 
 if(MSVC)
-    target_compile_options(RanVisualizerCapture PRIVATE /W4 /permissive-)
+    target_compile_options(${RV_APP_TARGET} PRIVATE /W4 /permissive-)
+    set_property(TARGET ${RV_APP_TARGET} PROPERTY
+        MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:DebugDLL>")
 else()
-    target_compile_options(RanVisualizerCapture PRIVATE -Wall -Wextra -Wpedantic)
+    target_compile_options(${RV_APP_TARGET} PRIVATE -Wall -Wextra -Wpedantic)
+endif()
+
+install(TARGETS ${RV_APP_TARGET}
+    RUNTIME DESTINATION .
+)
+
+if(EXISTS "${CMAKE_SOURCE_DIR}/README.md")
+    install(FILES "${CMAKE_SOURCE_DIR}/README.md" DESTINATION .)
+endif()
+
+if(EXISTS "${CMAKE_SOURCE_DIR}/LICENSE")
+    install(FILES "${CMAKE_SOURCE_DIR}/LICENSE" DESTINATION .)
+endif()
+
+if(EXISTS "${CMAKE_SOURCE_DIR}/assets")
+    install(DIRECTORY "${CMAKE_SOURCE_DIR}/assets/" DESTINATION assets)
 endif()
