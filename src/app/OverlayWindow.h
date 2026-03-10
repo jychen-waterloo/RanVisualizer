@@ -13,6 +13,12 @@
 
 namespace rv::app {
 
+enum class InteractionMode {
+    Idle,
+    Moving,
+    Resizing,
+};
+
 class OverlayWindow {
 public:
     using CommandCallback = std::function<void(AppCommand)>;
@@ -46,10 +52,14 @@ private:
 
     void RequestCommand(AppCommand command);
     bool PointFromLParam(LPARAM lParam, float& x, float& y) const;
-    LRESULT HandleHitTest(LPARAM lParam) const;
+    LRESULT HandleHitTest(LPARAM lParam);
     int ScaleDipToPixels(int dip) const;
     bool IsInDragRegion(int clientX, int clientY, int resizeEdgePx) const;
+    bool IsResizeHit(int hitTest) const;
     void ApplyRenderConfig();
+    void EnterInteractionMode(InteractionMode mode);
+    void ExitInteractionMode();
+    void RenderInteractiveFrame();
     void UpdateTrackedWindowSize();
     void NotifySettingsChanged();
 
@@ -63,6 +73,8 @@ private:
     bool clickThrough_{false};
     bool overlayVisible_{true};
     bool pointerHovering_{false};
+    InteractionMode interactionMode_{InteractionMode::Idle};
+    int lastHitTestCode_{HTCLIENT};
     TrayIcon tray_{};
     Hotkeys hotkeys_{};
     SettingsData settings_{};

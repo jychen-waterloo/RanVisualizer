@@ -3,6 +3,7 @@
 #include "../platform/WindowStyles.h"
 
 #include <algorithm>
+#include <chrono>
 #include <utility>
 #include <windowsx.h>
 
@@ -108,6 +109,9 @@ LRESULT OverlayWindow::WndProc(const UINT msg, const WPARAM wParam, const LPARAM
         renderer_.OnResize(LOWORD(lParam), HIWORD(lParam));
         if (wParam != SIZE_MINIMIZED) {
             UpdateTrackedWindowSize();
+            if (interactionMode_ == InteractionMode::Resizing) {
+                RenderInteractiveFrame();
+            }
         }
         return 0;
     case WM_GETMINMAXINFO: {
@@ -132,11 +136,27 @@ LRESULT OverlayWindow::WndProc(const UINT msg, const WPARAM wParam, const LPARAM
         return 0;
     case WM_NCHITTEST:
         return HandleHitTest(lParam);
+    case WM_NCLBUTTONDOWN:
+        if (IsResizeHit(static_cast<int>(wParam))) {
+            EnterInteractionMode(InteractionMode::Resizing);
+        } else if (wParam == HTCAPTION) {
+            EnterInteractionMode(InteractionMode::Moving);
+        }
+        break;
     case WM_ENTERSIZEMOVE:
+        if (interactionMode_ == InteractionMode::Idle) {
+            EnterInteractionMode(IsResizeHit(lastHitTestCode_) ? InteractionMode::Resizing : InteractionMode::Moving);
+        }
         return 0;
     case WM_EXITSIZEMOVE:
         UpdateTrackedWindowSize();
+        ExitInteractionMode();
         NotifySettingsChanged();
+        return 0;
+    case WM_CAPTURECHANGED:
+        if (interactionMode_ != InteractionMode::Idle) {
+            ExitInteractionMode();
+        }
         return 0;
     case WM_LBUTTONUP: {
         if (clickThrough_) {
@@ -182,7 +202,10 @@ LRESULT OverlayWindow::WndProc(const UINT msg, const WPARAM wParam, const LPARAM
             return 0;
         }
         if (tray_.TryApplySettingsCommand(wParam, settings_)) {
+            renderer_.SetQualityMode(render::RenderQualityMode::InteractiveResize);
             ApplyRenderConfig();
+            RenderInteractiveFrame();
+            renderer_.SetQualityMode(render::RenderQualityMode::Normal);
             NotifySettingsChanged();
             return 0;
         }
@@ -212,6 +235,7 @@ void OverlayWindow::SetClickThrough(const bool enabled) {
     platform::SetClickThrough(hwnd_, clickThrough_);
     if (clickThrough_) {
         pointerHovering_ = false;
+        ExitInteractionMode();
     }
 }
 
@@ -307,8 +331,9 @@ bool OverlayWindow::IsInDragRegion(const int clientX, const int clientY, const i
     return clientX >= dragRect.left && clientX < dragRect.right && clientY >= dragRect.top && clientY < dragRect.bottom;
 }
 
-LRESULT OverlayWindow::HandleHitTest(const LPARAM lParam) const {
+LRESULT OverlayWindow::HandleHitTest(const LPARAM lParam) {
     if (clickThrough_) {
+        lastHitTestCode_ = HTTRANSPARENT;
         return HTTRANSPARENT;
     }
 
@@ -324,10 +349,12 @@ LRESULT OverlayWindow::HandleHitTest(const LPARAM lParam) const {
     const int clientY = screenY - windowRect.top;
 
     if (clientX < 0 || clientY < 0 || clientX >= width || clientY >= height) {
+        lastHitTestCode_ = HTNOWHERE;
         return HTNOWHERE;
     }
 
     if (renderer_.HitTestCloseButton(static_cast<float>(clientX), static_cast<float>(clientY))) {
+        lastHitTestCode_ = HTCLIENT;
         return HTCLIENT;
     }
 
@@ -344,22 +371,81 @@ LRESULT OverlayWindow::HandleHitTest(const LPARAM lParam) const {
     const bool inLeftCornerBand = clientX >= 0 && clientX < corner;
     const bool inRightCornerBand = clientX >= (width - corner) && clientX < width;
 
-    // Priority: controls -> corners -> edges -> drag -> client.
-    if (inTopCornerBand && inLeftCornerBand) return HTTOPLEFT;
-    if (inTopCornerBand && inRightCornerBand) return HTTOPRIGHT;
-    if (inBottomCornerBand && inLeftCornerBand) return HTBOTTOMLEFT;
-    if (inBottomCornerBand && inRightCornerBand) return HTBOTTOMRIGHT;
+    if (inTopCornerBand && inLeftCornerBand) {
+        lastHitTestCode_ = HTTOPLEFT;
+        return HTTOPLEFT;
+    }
+    if (inTopCornerBand && inRightCornerBand) {
+        lastHitTestCode_ = HTTOPRIGHT;
+        return HTTOPRIGHT;
+    }
+    if (inBottomCornerBand && inLeftCornerBand) {
+        lastHitTestCode_ = HTBOTTOMLEFT;
+        return HTBOTTOMLEFT;
+    }
+    if (inBottomCornerBand && inRightCornerBand) {
+        lastHitTestCode_ = HTBOTTOMRIGHT;
+        return HTBOTTOMRIGHT;
+    }
 
-    if (nearLeft) return HTLEFT;
-    if (nearRight) return HTRIGHT;
-    if (nearTop) return HTTOP;
-    if (nearBottom) return HTBOTTOM;
+    if (nearLeft) {
+        lastHitTestCode_ = HTLEFT;
+        return HTLEFT;
+    }
+    if (nearRight) {
+        lastHitTestCode_ = HTRIGHT;
+        return HTRIGHT;
+    }
+    if (nearTop) {
+        lastHitTestCode_ = HTTOP;
+        return HTTOP;
+    }
+    if (nearBottom) {
+        lastHitTestCode_ = HTBOTTOM;
+        return HTBOTTOM;
+    }
 
     if (IsInDragRegion(clientX, clientY, edge)) {
+        lastHitTestCode_ = HTCAPTION;
         return HTCAPTION;
     }
 
+    lastHitTestCode_ = HTCLIENT;
     return HTCLIENT;
+}
+
+bool OverlayWindow::IsResizeHit(const int hitTest) const {
+    switch (hitTest) {
+    case HTLEFT:
+    case HTRIGHT:
+    case HTTOP:
+    case HTBOTTOM:
+    case HTTOPLEFT:
+    case HTTOPRIGHT:
+    case HTBOTTOMLEFT:
+    case HTBOTTOMRIGHT:
+        return true;
+    default:
+        return false;
+    }
+}
+
+void OverlayWindow::EnterInteractionMode(const InteractionMode mode) {
+    interactionMode_ = mode;
+    if (interactionMode_ == InteractionMode::Resizing) {
+        renderer_.SetQualityMode(render::RenderQualityMode::InteractiveResize);
+        RenderInteractiveFrame();
+    }
+}
+
+void OverlayWindow::ExitInteractionMode() {
+    interactionMode_ = InteractionMode::Idle;
+    renderer_.SetQualityMode(render::RenderQualityMode::Normal);
+}
+
+void OverlayWindow::RenderInteractiveFrame() {
+    const auto now = std::chrono::steady_clock::now();
+    renderer_.Render(lastSnapshot_, render::FrameTiming{now, 1.0f / 60.0f, 60.0f}, false);
 }
 
 void OverlayWindow::UpdateTrackedWindowSize() {
