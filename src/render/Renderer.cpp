@@ -6,6 +6,11 @@
 
 namespace rv::render {
 
+namespace {
+constexpr float kMainBarHeightRatio = 0.80f;
+constexpr float kPeakLineInsetPx = 1.0f;
+}
+
 Renderer::Renderer()
     : theme_(MakeTheme(config_.theme)) {
 }
@@ -215,23 +220,31 @@ void Renderer::SetConfig(const RenderConfig& config) {
 }
 
 void Renderer::DrawBars(const BarLayout& layout) {
-    const auto& bands = animation_.DisplayedBands();
+    const auto& bars = animation_.DisplayedBands();
     const auto& peaks = animation_.DisplayedPeaks();
 
-    for (size_t i = 0; i < bands.size() && i < layout.barRects.size(); ++i) {
+    for (size_t i = 0; i < bars.size() && i < layout.barRects.size(); ++i) {
         const auto baseRect = layout.barRects[i];
-        const float usableHeight = baseRect.bottom - baseRect.top;
-        const float barHeight = usableHeight * std::clamp(bands[i], 0.0f, 1.0f);
-        const float top = baseRect.bottom - barHeight;
+        const float drawableHeight = baseRect.bottom - baseRect.top;
+        const float mainRangeHeight = drawableHeight * kMainBarHeightRatio;
 
-        const D2D1_ROUNDED_RECT rr{D2D1::RectF(baseRect.left, top, baseRect.right, baseRect.bottom), layout.barRadius,
+        const float smoothedBand = std::clamp(bars[i], 0.0f, 1.0f);
+        const float peakBand = std::clamp(i < peaks.size() ? peaks[i] : smoothedBand, 0.0f, 1.0f);
+
+        const float barHeightPx = mainRangeHeight * smoothedBand;
+        const float barTopY = baseRect.bottom - barHeightPx;
+
+        const D2D1_ROUNDED_RECT rr{D2D1::RectF(baseRect.left, barTopY, baseRect.right, baseRect.bottom), layout.barRadius,
             layout.barRadius};
         renderTarget_->FillRoundedRectangle(rr, barBrush_.Get());
 
-        const float glowTop = std::max(layout.topY, top - 12.0f);
-        renderTarget_->FillRectangle(D2D1::RectF(baseRect.left, glowTop, baseRect.right, top + 4.0f), glowBrush_.Get());
+        const float glowTop = std::max(layout.topY, barTopY - 12.0f);
+        renderTarget_->FillRectangle(D2D1::RectF(baseRect.left, glowTop, baseRect.right, barTopY + 4.0f), glowBrush_.Get());
 
-        const float peakY = baseRect.bottom - usableHeight * std::clamp(peaks[i], 0.0f, 1.0f);
+        float peakHeightPx = drawableHeight * peakBand;
+        peakHeightPx = std::max(peakHeightPx, barHeightPx + layout.peakHeight + kPeakLineInsetPx);
+        peakHeightPx = std::min(peakHeightPx, drawableHeight);
+        const float peakY = baseRect.bottom - peakHeightPx;
         renderTarget_->FillRoundedRectangle(
             D2D1::RoundedRect(D2D1::RectF(baseRect.left, peakY - layout.peakHeight, baseRect.right, peakY), 1.4f, 1.4f),
             peakBrush_.Get());
@@ -239,13 +252,14 @@ void Renderer::DrawBars(const BarLayout& layout) {
 }
 
 void Renderer::DrawBarsFast(const BarLayout& layout) {
-    const auto& bands = animation_.DisplayedBands();
+    const auto& bars = animation_.DisplayedBands();
 
-    for (size_t i = 0; i < bands.size() && i < layout.barRects.size(); ++i) {
+    for (size_t i = 0; i < bars.size() && i < layout.barRects.size(); ++i) {
         const auto baseRect = layout.barRects[i];
-        const float usableHeight = baseRect.bottom - baseRect.top;
-        const float barHeight = usableHeight * std::clamp(bands[i], 0.0f, 1.0f);
-        const float top = baseRect.bottom - barHeight;
+        const float drawableHeight = baseRect.bottom - baseRect.top;
+        const float mainRangeHeight = drawableHeight * kMainBarHeightRatio;
+        const float barHeightPx = mainRangeHeight * std::clamp(bars[i], 0.0f, 1.0f);
+        const float top = baseRect.bottom - barHeightPx;
         renderTarget_->FillRectangle(D2D1::RectF(baseRect.left, top, baseRect.right, baseRect.bottom), barBrush_.Get());
     }
 }
@@ -311,11 +325,12 @@ void Renderer::Render(const RenderSnapshot& snapshot, const FrameTiming& timing,
 
     MotionProfile profile{};
     const float intensity = std::clamp(config_.motionIntensity, 0.0f, 1.0f);
-    profile.attackHz = 16.0f + intensity * 22.0f;
-    profile.releaseHz = 7.0f + intensity * 15.0f;
-    profile.peakDecayHz = 3.0f + intensity * 4.0f;
-    profile.visualGain = 0.92f + intensity * 0.16f;
-    profile.lowEndBoost = intensity * 0.22f;
+    profile.attackHz = 14.0f + intensity * 18.0f;
+    profile.releaseHz = 6.0f + intensity * 12.0f;
+    profile.peakRiseHz = 18.0f + intensity * 30.0f;
+    profile.peakDecayHz = 1.8f + intensity * 5.4f;
+    profile.visualGain = 0.76f + intensity * 0.14f;
+    profile.lowEndBoost = intensity * 0.16f;
     profile.accentHz = 4.0f + intensity * 9.0f;
 
     animation_.Update(snapshot, timing.deltaSeconds, profile, config_.barCount);
@@ -323,21 +338,27 @@ void Renderer::Render(const RenderSnapshot& snapshot, const FrameTiming& timing,
     const auto layout = BuildBarLayout(size, animation_.DisplayedBands().size());
 
     if (showDebug) {
-        const auto& bands = animation_.DisplayedBands();
-        if (!bands.empty()) {
-            float maxV = 0.0f;
-            float mean = 0.0f;
-            size_t nearCeiling = 0;
-            for (float v : bands) {
-                maxV = std::max(maxV, v);
-                mean += v;
-                if (v > 0.95f) {
-                    ++nearCeiling;
+        const auto& bars = animation_.DisplayedBands();
+        const auto& peaks = animation_.DisplayedPeaks();
+        if (!bars.empty()) {
+            float maxBar = 0.0f;
+            float maxPeak = 0.0f;
+            float avgBar = 0.0f;
+            size_t nearMainCeiling = 0;
+            for (size_t i = 0; i < bars.size(); ++i) {
+                const float b = std::clamp(bars[i], 0.0f, 1.0f);
+                const float p = std::clamp(i < peaks.size() ? peaks[i] : b, 0.0f, 1.0f);
+                maxBar = std::max(maxBar, b);
+                maxPeak = std::max(maxPeak, p);
+                avgBar += b;
+                if (b > 0.98f) {
+                    ++nearMainCeiling;
                 }
             }
-            mean /= static_cast<float>(bands.size());
-            if (maxV > 1.02f || (mean > 0.82f && nearCeiling > bands.size() / 3)) {
-                OutputDebugStringW(L"[RanVisualizer] amplitude warning: spectrum nearing saturation\n");
+            avgBar /= static_cast<float>(bars.size());
+            const float avgMainOccupancy = avgBar * kMainBarHeightRatio;
+            if (maxBar > 1.02f || maxPeak > 1.02f || (avgMainOccupancy > 0.74f && nearMainCeiling > bars.size() / 3)) {
+                OutputDebugStringW(L"[RanVisualizer] render-range warning: bars/peaks nearing ceiling too often\n");
             }
         }
     }

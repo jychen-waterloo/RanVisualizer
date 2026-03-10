@@ -43,14 +43,14 @@ void RemapBands(const std::vector<float>& src, std::vector<float>& dst) {
 } // namespace
 
 void AnimationState::EnsureBandCount(const size_t bandCount) {
-    if (displayedBands_.size() == bandCount) {
+    if (smoothedBands_.size() == bandCount) {
         return;
     }
 
-    mappedBands_.assign(bandCount, 0.0f);
-    mappedPeaks_.assign(bandCount, 0.0f);
-    displayedBands_.assign(bandCount, 0.0f);
-    displayedPeaks_.assign(bandCount, 0.0f);
+    normalizedBands_.assign(bandCount, 0.0f);
+    normalizedPeaks_.assign(bandCount, 0.0f);
+    smoothedBands_.assign(bandCount, 0.0f);
+    peakBands_.assign(bandCount, 0.0f);
 }
 
 void AnimationState::Update(
@@ -64,35 +64,42 @@ void AnimationState::Update(
     // - motion profile adjusts timing and only applies mild amplitude shaping.
     EnsureBandCount(targetBarCount);
 
-    RemapBands(snapshot.smoothedBands, mappedBands_);
-    RemapBands(snapshot.peaks, mappedPeaks_);
+    RemapBands(snapshot.smoothedBands, normalizedBands_);
+    RemapBands(snapshot.peaks, normalizedPeaks_);
 
     const float riseAlpha = 1.0f - std::exp(-deltaSeconds * profile.attackHz);
     const float fallAlpha = 1.0f - std::exp(-deltaSeconds * profile.releaseHz);
+    const float peakRiseAlpha = 1.0f - std::exp(-deltaSeconds * profile.peakRiseHz);
     const float peakDecay = std::exp(-deltaSeconds * (snapshot.isSilentLike ? profile.peakDecayHz * 1.6f : profile.peakDecayHz));
 
-    for (size_t i = 0; i < displayedBands_.size(); ++i) {
-        const float x = static_cast<float>(i) / std::max(1.0f, static_cast<float>(displayedBands_.size() - 1));
+    for (size_t i = 0; i < smoothedBands_.size(); ++i) {
+        const float x = static_cast<float>(i) / std::max(1.0f, static_cast<float>(smoothedBands_.size() - 1));
         const float lowLift = 1.0f + profile.lowEndBoost * (1.0f - x) * (1.0f - x);
         // Compensate low-end emphasis so it changes shape more than absolute loudness.
         const float lowLiftComp = 1.0f / (1.0f + profile.lowEndBoost * 0.38f);
-        const float shaped = mappedBands_[i] * lowLift * lowLiftComp;
-        const float target = std::clamp(shaped * profile.visualGain, 0.0f, 1.0f);
+        const float conditionedBand = normalizedBands_[i];
+        const float shapedBand = conditionedBand * lowLift * lowLiftComp;
+        const float targetBand = std::clamp(shapedBand * profile.visualGain, 0.0f, 1.0f);
 
-        const float alpha = target > displayedBands_[i] ? riseAlpha : fallAlpha;
-        displayedBands_[i] += (target - displayedBands_[i]) * alpha;
+        const float bandAlpha = targetBand > smoothedBands_[i] ? riseAlpha : fallAlpha;
+        smoothedBands_[i] += (targetBand - smoothedBands_[i]) * bandAlpha;
 
-        const float peakShaped = (i < mappedPeaks_.size() ? mappedPeaks_[i] : target) * lowLift * lowLiftComp;
-        const float peakTarget = std::clamp(peakShaped, 0.0f, 1.0f);
-        if (peakTarget > displayedPeaks_[i]) {
-            displayedPeaks_[i] = peakTarget;
+        const float conditionedPeak = (i < normalizedPeaks_.size() ? normalizedPeaks_[i] : conditionedBand);
+        const float shapedPeak = conditionedPeak * lowLift * lowLiftComp;
+        const float targetPeak = std::clamp(shapedPeak * profile.visualGain, 0.0f, 1.0f);
+
+        if (targetPeak >= peakBands_[i]) {
+            peakBands_[i] += (targetPeak - peakBands_[i]) * peakRiseAlpha;
         } else {
-            displayedPeaks_[i] *= peakDecay;
+            const float peakFloor = std::max(smoothedBands_[i], targetPeak);
+            peakBands_[i] = peakFloor + (peakBands_[i] - peakFloor) * peakDecay;
         }
+        peakBands_[i] = std::max(peakBands_[i], smoothedBands_[i]);
 
 #if defined(_DEBUG)
-        assert(target >= 0.0f && target <= 1.0f);
-        assert(displayedBands_[i] >= -0.001f && displayedBands_[i] <= 1.001f);
+        assert(targetBand >= 0.0f && targetBand <= 1.0f);
+        assert(smoothedBands_[i] >= -0.001f && smoothedBands_[i] <= 1.001f);
+        assert(peakBands_[i] >= -0.001f && peakBands_[i] <= 1.001f);
 #endif
     }
 
