@@ -87,3 +87,27 @@ build/Release/RanVisualizerCapture.exe
 - Resize interaction is intentionally disabled in click-through mode.
 - No automatic bar-count scaling based on width in this milestone (bar count stays user-configured).
 - Linux CI/build environments without Windows SDK cannot compile this target (Windows native app).
+
+## Packaging / Release Build (Windows)
+
+A one-click packaging script is provided for creating a portable Release x64 zip package.
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\package_release.ps1
+```
+
+What the script does:
+
+1. Configures CMake for **Visual Studio 2022** (`-A x64`)
+2. Builds the app in **Release**
+3. Installs files into `dist/RanVisualizerCapture/`
+4. Creates `dist/RanVisualizerCapture-win-x64.zip`
+
+Included in the package (when present):
+
+- `RanVisualizerCapture.exe`
+- `README.md`
+- `LICENSE`
+- `assets/` directory (if it exists in the repo)
+
+Release builds use the static MSVC runtime (`/MT`) to reduce end-user VC++ runtime dependency issues.
