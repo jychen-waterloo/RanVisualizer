@@ -13,6 +13,11 @@
 
 namespace rv::render {
 
+enum class RenderQualityMode {
+    Normal,
+    InteractiveResize,
+};
+
 class Renderer {
 public:
     Renderer();
@@ -23,6 +28,7 @@ public:
     void SetInteractionState(bool interactive, bool pointerHovering);
     void SetConfig(const RenderConfig& config);
     bool HitTestCloseButton(float x, float y) const;
+    void SetQualityMode(RenderQualityMode mode);
     void Render(const RenderSnapshot& snapshot, const FrameTiming& timing, bool showDebug);
 
 private:
@@ -31,6 +37,7 @@ private:
     bool CreateBitmapResources(UINT width, UINT height);
     void DiscardDeviceResources();
     void DrawBars(const BarLayout& layout);
+    void DrawBarsFast(const BarLayout& layout);
     void DrawOverlayControls();
     void DrawDebugText(const RenderSnapshot& snapshot, const FrameTiming& timing, size_t bandCount);
     void PresentLayered();
@@ -43,6 +50,7 @@ private:
     AnimationState animation_{};
     OverlayControls controls_{};
     bool interactive_{true};
+    RenderQualityMode qualityMode_{RenderQualityMode::Normal};
 
     HDC screenDc_{nullptr};
     HDC memoryDc_{nullptr};

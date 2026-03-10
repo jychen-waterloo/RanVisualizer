@@ -193,6 +193,10 @@ bool Renderer::HitTestCloseButton(const float x, const float y) const {
     return controls_.HitTestCloseButton(x, y);
 }
 
+void Renderer::SetQualityMode(const RenderQualityMode mode) {
+    qualityMode_ = mode;
+}
+
 void Renderer::SetConfig(const RenderConfig& config) {
     config_ = config;
     theme_ = MakeTheme(config_.theme);
@@ -231,6 +235,18 @@ void Renderer::DrawBars(const BarLayout& layout) {
         renderTarget_->FillRoundedRectangle(
             D2D1::RoundedRect(D2D1::RectF(baseRect.left, peakY - layout.peakHeight, baseRect.right, peakY), 1.4f, 1.4f),
             peakBrush_.Get());
+    }
+}
+
+void Renderer::DrawBarsFast(const BarLayout& layout) {
+    const auto& bands = animation_.DisplayedBands();
+
+    for (size_t i = 0; i < bands.size() && i < layout.barRects.size(); ++i) {
+        const auto baseRect = layout.barRects[i];
+        const float usableHeight = baseRect.bottom - baseRect.top;
+        const float barHeight = usableHeight * std::clamp(bands[i], 0.0f, 1.0f);
+        const float top = baseRect.bottom - barHeight;
+        renderTarget_->FillRectangle(D2D1::RectF(baseRect.left, top, baseRect.right, baseRect.bottom), barBrush_.Get());
     }
 }
 
@@ -333,17 +349,30 @@ void Renderer::Render(const RenderSnapshot& snapshot, const FrameTiming& timing,
         theme_.barBase.b + (theme_.barAccent.b - theme_.barBase.b) * accent,
         theme_.barBase.a));
 
+    peakBrush_->SetColor(theme_.peak);
+    backdropBrush_->SetColor(theme_.backdrop);
+
     renderTarget_->BeginDraw();
     renderTarget_->Clear(D2D1::ColorF(0, 0, 0, 0));
 
-    const D2D1_ROUNDED_RECT plate = D2D1::RoundedRect(D2D1::RectF(6.0f, 6.0f, size.width - 6.0f, size.height - 6.0f), 16.0f, 16.0f);
-    renderTarget_->FillRoundedRectangle(plate, backdropBrush_.Get());
+    if (qualityMode_ == RenderQualityMode::InteractiveResize) {
+        const D2D1_RECT_F panel = D2D1::RectF(0.0f, 0.0f, size.width, size.height);
+        backdropBrush_->SetColor(D2D1::ColorF(0.02f, 0.02f, 0.03f, 0.92f));
+        renderTarget_->FillRectangle(panel, backdropBrush_.Get());
+        barBrush_->SetColor(D2D1::ColorF(theme_.barBase.r, theme_.barBase.g, theme_.barBase.b, 0.78f));
+        DrawBarsFast(layout);
+        peakBrush_->SetColor(D2D1::ColorF(1.0f, 1.0f, 1.0f, 0.28f));
+        renderTarget_->DrawRectangle(D2D1::RectF(1.0f, 1.0f, size.width - 1.0f, size.height - 1.0f), peakBrush_.Get(), 1.0f);
+    } else {
+        const D2D1_ROUNDED_RECT plate = D2D1::RoundedRect(D2D1::RectF(6.0f, 6.0f, size.width - 6.0f, size.height - 6.0f), 16.0f, 16.0f);
+        renderTarget_->FillRoundedRectangle(plate, backdropBrush_.Get());
 
-    DrawBars(layout);
-    controls_.Update(timing.deltaSeconds);
-    DrawOverlayControls();
-    if (showDebug) {
-        DrawDebugText(snapshot, timing, animation_.DisplayedBands().size());
+        DrawBars(layout);
+        controls_.Update(timing.deltaSeconds);
+        DrawOverlayControls();
+        if (showDebug) {
+            DrawDebugText(snapshot, timing, animation_.DisplayedBands().size());
+        }
     }
 
     const HRESULT hr = renderTarget_->EndDraw();

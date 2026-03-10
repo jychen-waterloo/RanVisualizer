@@ -13,6 +13,12 @@
 
 namespace rv::app {
 
+enum class InteractionMode {
+    Idle,
+    Moving,
+    Resizing,
+};
+
 class OverlayWindow {
 public:
     using CommandCallback = std::function<void(AppCommand)>;
@@ -34,12 +40,28 @@ public:
     void SetSettingsChangedCallback(std::function<void()> callback);
 
 private:
+    static constexpr int kMinOverlayWidth = 280;
+    static constexpr int kMinOverlayHeight = 120;
+    static constexpr int kMaxOverlayHeight = 900;
+
+    static constexpr int kResizeEdgeThicknessDip = 14;
+    static constexpr int kResizeCornerThicknessDip = 18;
+
     static LRESULT CALLBACK WndProcStatic(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam);
     LRESULT WndProc(UINT msg, WPARAM wParam, LPARAM lParam);
 
     void RequestCommand(AppCommand command);
     bool PointFromLParam(LPARAM lParam, float& x, float& y) const;
+    LRESULT HandleHitTest(LPARAM lParam);
+    int ScaleDipToPixels(int dip) const;
+    bool IsInDragRegion(int clientX, int clientY, int resizeEdgePx) const;
+    bool IsResizeHit(int hitTest) const;
     void ApplyRenderConfig();
+    void EnterInteractionMode(InteractionMode mode);
+    void ExitInteractionMode();
+    void RenderInteractiveFrame();
+    void UpdateTrackedWindowSize();
+    void NotifySettingsChanged();
 
     HWND hwnd_{nullptr};
     audio::LoopbackCapture& capture_;
@@ -51,6 +73,8 @@ private:
     bool clickThrough_{false};
     bool overlayVisible_{true};
     bool pointerHovering_{false};
+    InteractionMode interactionMode_{InteractionMode::Idle};
+    int lastHitTestCode_{HTCLIENT};
     TrayIcon tray_{};
     Hotkeys hotkeys_{};
     SettingsData settings_{};
