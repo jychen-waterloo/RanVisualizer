@@ -34,10 +34,12 @@ public:
     void SetSettingsChangedCallback(std::function<void()> callback);
 
 private:
-    static constexpr int kResizeBorderPx = 8;
     static constexpr int kMinOverlayWidth = 280;
     static constexpr int kMinOverlayHeight = 120;
     static constexpr int kMaxOverlayHeight = 900;
+
+    static constexpr int kResizeEdgeThicknessDip = 14;
+    static constexpr int kResizeCornerThicknessDip = 18;
 
     static LRESULT CALLBACK WndProcStatic(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam);
     LRESULT WndProc(UINT msg, WPARAM wParam, LPARAM lParam);
@@ -45,6 +47,8 @@ private:
     void RequestCommand(AppCommand command);
     bool PointFromLParam(LPARAM lParam, float& x, float& y) const;
     LRESULT HandleHitTest(LPARAM lParam) const;
+    int ScaleDipToPixels(int dip) const;
+    bool IsInDragRegion(int clientX, int clientY, int resizeEdgePx) const;
     void ApplyRenderConfig();
     void UpdateTrackedWindowSize();
     void NotifySettingsChanged();

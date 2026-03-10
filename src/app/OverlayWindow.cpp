@@ -28,6 +28,7 @@ bool OverlayWindow::Create(HINSTANCE instance, const SettingsData& settings) {
     settings_ = settings;
     settings_.width = (std::clamp)(settings_.width, kMinOverlayWidth, 2400);
     settings_.height = (std::clamp)(settings_.height, kMinOverlayHeight, kMaxOverlayHeight);
+
     WNDCLASSW wc{};
     wc.lpfnWndProc = OverlayWindow::WndProcStatic;
     wc.hInstance = instance;
@@ -182,9 +183,7 @@ LRESULT OverlayWindow::WndProc(const UINT msg, const WPARAM wParam, const LPARAM
         }
         if (tray_.TryApplySettingsCommand(wParam, settings_)) {
             ApplyRenderConfig();
-            if (onSettingsChanged_) {
-                onSettingsChanged_();
-            }
+            NotifySettingsChanged();
             return 0;
         }
         break;
@@ -264,7 +263,6 @@ bool OverlayWindow::PointFromLParam(const LPARAM lParam, float& x, float& y) con
     return true;
 }
 
-
 void OverlayWindow::SetSettingsChangedCallback(std::function<void()> callback) {
     onSettingsChanged_ = std::move(callback);
 }
@@ -291,6 +289,24 @@ void OverlayWindow::ApplyRenderConfig() {
     SetWindowPos(hwnd_, nullptr, rc.left, rc.top, settings_.width, settings_.height, SWP_NOZORDER | SWP_NOACTIVATE);
 }
 
+int OverlayWindow::ScaleDipToPixels(const int dip) const {
+    const UINT dpi = hwnd_ ? GetDpiForWindow(hwnd_) : 96U;
+    return std::max(1, MulDiv(dip, static_cast<int>(dpi), 96));
+}
+
+bool OverlayWindow::IsInDragRegion(const int clientX, const int clientY, const int resizeEdgePx) const {
+    RECT clientRect{};
+    GetClientRect(hwnd_, &clientRect);
+
+    const RECT dragRect{
+        clientRect.left + resizeEdgePx,
+        clientRect.top + resizeEdgePx,
+        clientRect.right - resizeEdgePx,
+        clientRect.bottom - resizeEdgePx};
+
+    return clientX >= dragRect.left && clientX < dragRect.right && clientY >= dragRect.top && clientY < dragRect.bottom;
+}
+
 LRESULT OverlayWindow::HandleHitTest(const LPARAM lParam) const {
     if (clickThrough_) {
         return HTTRANSPARENT;
@@ -299,29 +315,51 @@ LRESULT OverlayWindow::HandleHitTest(const LPARAM lParam) const {
     RECT windowRect{};
     GetWindowRect(hwnd_, &windowRect);
 
-    const int x = GET_X_LPARAM(lParam);
-    const int y = GET_Y_LPARAM(lParam);
+    const int screenX = GET_X_LPARAM(lParam);
+    const int screenY = GET_Y_LPARAM(lParam);
 
-    POINT cursor{x - windowRect.left, y - windowRect.top};
-    if (renderer_.HitTestCloseButton(static_cast<float>(cursor.x), static_cast<float>(cursor.y))) {
+    const int width = windowRect.right - windowRect.left;
+    const int height = windowRect.bottom - windowRect.top;
+    const int clientX = screenX - windowRect.left;
+    const int clientY = screenY - windowRect.top;
+
+    if (clientX < 0 || clientY < 0 || clientX >= width || clientY >= height) {
+        return HTNOWHERE;
+    }
+
+    if (renderer_.HitTestCloseButton(static_cast<float>(clientX), static_cast<float>(clientY))) {
         return HTCLIENT;
     }
 
-    const bool left = x >= windowRect.left && x < windowRect.left + kResizeBorderPx;
-    const bool right = x < windowRect.right && x >= windowRect.right - kResizeBorderPx;
-    const bool top = y >= windowRect.top && y < windowRect.top + kResizeBorderPx;
-    const bool bottom = y < windowRect.bottom && y >= windowRect.bottom - kResizeBorderPx;
+    const int edge = ScaleDipToPixels(kResizeEdgeThicknessDip);
+    const int corner = std::max(edge, ScaleDipToPixels(kResizeCornerThicknessDip));
 
-    if (top && left) return HTTOPLEFT;
-    if (top && right) return HTTOPRIGHT;
-    if (bottom && left) return HTBOTTOMLEFT;
-    if (bottom && right) return HTBOTTOMRIGHT;
-    if (left) return HTLEFT;
-    if (right) return HTRIGHT;
-    if (top) return HTTOP;
-    if (bottom) return HTBOTTOM;
+    const bool nearLeft = clientX >= 0 && clientX < edge;
+    const bool nearRight = clientX >= (width - edge) && clientX < width;
+    const bool nearTop = clientY >= 0 && clientY < edge;
+    const bool nearBottom = clientY >= (height - edge) && clientY < height;
 
-    return HTCAPTION;
+    const bool inTopCornerBand = clientY >= 0 && clientY < corner;
+    const bool inBottomCornerBand = clientY >= (height - corner) && clientY < height;
+    const bool inLeftCornerBand = clientX >= 0 && clientX < corner;
+    const bool inRightCornerBand = clientX >= (width - corner) && clientX < width;
+
+    // Priority: controls -> corners -> edges -> drag -> client.
+    if (inTopCornerBand && inLeftCornerBand) return HTTOPLEFT;
+    if (inTopCornerBand && inRightCornerBand) return HTTOPRIGHT;
+    if (inBottomCornerBand && inLeftCornerBand) return HTBOTTOMLEFT;
+    if (inBottomCornerBand && inRightCornerBand) return HTBOTTOMRIGHT;
+
+    if (nearLeft) return HTLEFT;
+    if (nearRight) return HTRIGHT;
+    if (nearTop) return HTTOP;
+    if (nearBottom) return HTBOTTOM;
+
+    if (IsInDragRegion(clientX, clientY, edge)) {
+        return HTCAPTION;
+    }
+
+    return HTCLIENT;
 }
 
 void OverlayWindow::UpdateTrackedWindowSize() {
