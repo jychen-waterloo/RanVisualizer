@@ -19,12 +19,14 @@ struct TunnelTuning {
     float glowBase;
     float glowLoudnessGain;
 
-    float centerDriftAmplitudeX;
-    float centerDriftAmplitudeY;
+    float centerDriftAmplitudeXNorm;
+    float centerDriftAmplitudeYNorm;
     float centerDriftFrequencyX;
     float centerDriftFrequencyY;
+    float centerDriftDepthLead;
     float centerDriftSecondaryMix;
     float centerAudioInfluence;
+    float centerDriftAudioWarp;
 
     float radiusFactor;
 
@@ -61,26 +63,27 @@ TunnelTuning BuildTuning(const float motionIntensity) {
     return TunnelTuning{
         0.085f,
         0.085f * motion,
-        0.15f,
-        0.05f,
-        0.02f,
-        0.035f * motion,
-        0.30f,
+        0.21f,
+        0.08f,
+        0.07f,
+        0.105f * motion,
         0.32f,
+        0.52f,
 
-        8.5f,
-        4.2f,
-        0.085f,
-        0.059f,
-        0.36f,
-        0.10f,
+        0.175f,
+        0.115f,
+        0.42f,
+        0.31f,
+        1.85f,
+        0.42f,
+        0.24f,
 
         0.225f,
 
         0.78f,
         1.25f,
-        0.42f,
-        1.45f,
+        0.58f,
+        1.75f,
         0.28f,
 
         0.06f,
@@ -88,21 +91,21 @@ TunnelTuning BuildTuning(const float motionIntensity) {
         0.08f,
         0.62f,
 
-        8,
-        8.0f,
-        4.0f,
+        10,
+        10.0f,
+        5.0f,
         0.94f,
-        0.68f,
-        0.14f,
-        0.30f,
-
-        6,
-        9.0f,
-        4.0f,
+        0.82f,
         0.16f,
-        0.30f,
+        0.42f,
+
+        8,
+        11.0f,
+        6.0f,
+        0.22f,
+        0.42f,
         0.95f,
-        1.10f,
+        1.35f,
     };
 }
 
@@ -181,18 +184,22 @@ void TriangleTunnelRenderer::Render(ID2D1DCRenderTarget* target,
 
     const float aspect = width_ / std::max(height_, 1.0f);
     const float radius = std::min(width_, height_) * tuning.radiusFactor * pulse;
-    const float pathTime = time_ * 0.95f;
+    const float minDim = std::min(width_, height_);
+    const float pathTime = time_;
 
     // Frame centers are sampled from one smooth path so the tunnel axis bends over depth.
     const auto SampleTunnelCenter = [&](const float depth) -> D2D1_POINT_2F {
-        const float sample = pathTime + depth * 1.55f;
-        const float driftAmpX = tuning.centerDriftAmplitudeX * (1.0f + tuning.centerAudioInfluence * (0.10f * loud + 0.08f * bass));
-        const float driftAmpY = tuning.centerDriftAmplitudeY * (1.0f + tuning.centerAudioInfluence * (0.08f * loud + 0.06f * mid));
+        const float sample = pathTime + depth * tuning.centerDriftDepthLead;
+        const float audioWarp = tuning.centerDriftAudioWarp * (0.55f * loud + 0.45f * bass);
+        const float driftAmpX = minDim * tuning.centerDriftAmplitudeXNorm
+            * (1.0f + tuning.centerAudioInfluence * (0.28f * loud + 0.18f * bass));
+        const float driftAmpY = minDim * tuning.centerDriftAmplitudeYNorm
+            * (1.0f + tuning.centerAudioInfluence * (0.24f * loud + 0.16f * mid));
 
-        const float xPrimary = std::sin(sample * tuning.centerDriftFrequencyX);
-        const float xSecondary = std::sin(sample * tuning.centerDriftFrequencyX * 0.42f + 1.7f);
-        const float yPrimary = std::cos(sample * tuning.centerDriftFrequencyY + 0.35f);
-        const float ySecondary = std::sin(sample * tuning.centerDriftFrequencyY * 0.58f + 2.2f);
+        const float xPrimary = std::sin(sample * tuning.centerDriftFrequencyX + audioWarp * 0.45f);
+        const float xSecondary = std::sin(sample * tuning.centerDriftFrequencyX * 0.56f + 1.7f + audioWarp);
+        const float yPrimary = std::cos(sample * tuning.centerDriftFrequencyY + 0.35f + audioWarp * 0.30f);
+        const float ySecondary = std::sin(sample * tuning.centerDriftFrequencyY * 0.63f + 2.2f + audioWarp * 0.70f);
 
         return D2D1::Point2F(
             width_ * 0.5f + driftAmpX * ((1.0f - tuning.centerDriftSecondaryMix) * xPrimary + tuning.centerDriftSecondaryMix * xSecondary),
