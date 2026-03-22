@@ -179,21 +179,25 @@ void TriangleTunnelRenderer::Render(ID2D1DCRenderTarget* target,
     const float pulse = 1.0f + bass * (tuning.pulseBassGain + tuning.pulseMotionGain);
     const float glowBoost = tuning.glowBase + loud * tuning.glowLoudnessGain;
 
-    // Continuous centerline drift path: long, smooth arcs with mild secondary curvature.
-    const float driftAmpX = tuning.centerDriftAmplitudeX * (1.0f + tuning.centerAudioInfluence * (0.10f * loud + 0.08f * bass));
-    const float driftAmpY = tuning.centerDriftAmplitudeY * (1.0f + tuning.centerAudioInfluence * (0.08f * loud + 0.06f * mid));
-    const float phaseX = time_ * tuning.centerDriftFrequencyX;
-    const float phaseY = time_ * tuning.centerDriftFrequencyY;
-    const float primaryX = std::sin(phaseX);
-    const float secondaryX = std::sin(phaseX * 0.47f + 1.7f);
-    const float primaryY = std::cos(phaseY + 0.35f);
-    const float secondaryY = std::sin(phaseY * 0.61f + 2.2f);
-
-    const float cx = width_ * 0.5f + driftAmpX * ((1.0f - tuning.centerDriftSecondaryMix) * primaryX + tuning.centerDriftSecondaryMix * secondaryX);
-    const float cy = height_ * 0.5f + driftAmpY * ((1.0f - tuning.centerDriftSecondaryMix) * primaryY + tuning.centerDriftSecondaryMix * secondaryY);
-
     const float aspect = width_ / std::max(height_, 1.0f);
     const float radius = std::min(width_, height_) * tuning.radiusFactor * pulse;
+    const float pathTime = time_ * 0.95f;
+
+    // Frame centers are sampled from one smooth path so the tunnel axis bends over depth.
+    const auto SampleTunnelCenter = [&](const float depth) -> D2D1_POINT_2F {
+        const float sample = pathTime + depth * 1.55f;
+        const float driftAmpX = tuning.centerDriftAmplitudeX * (1.0f + tuning.centerAudioInfluence * (0.10f * loud + 0.08f * bass));
+        const float driftAmpY = tuning.centerDriftAmplitudeY * (1.0f + tuning.centerAudioInfluence * (0.08f * loud + 0.06f * mid));
+
+        const float xPrimary = std::sin(sample * tuning.centerDriftFrequencyX);
+        const float xSecondary = std::sin(sample * tuning.centerDriftFrequencyX * 0.42f + 1.7f);
+        const float yPrimary = std::cos(sample * tuning.centerDriftFrequencyY + 0.35f);
+        const float ySecondary = std::sin(sample * tuning.centerDriftFrequencyY * 0.58f + 2.2f);
+
+        return D2D1::Point2F(
+            width_ * 0.5f + driftAmpX * ((1.0f - tuning.centerDriftSecondaryMix) * xPrimary + tuning.centerDriftSecondaryMix * xSecondary),
+            height_ * 0.5f + driftAmpY * ((1.0f - tuning.centerDriftSecondaryMix) * yPrimary + tuning.centerDriftSecondaryMix * ySecondary));
+    };
 
     backdropBrush->SetColor(D2D1::ColorF(
         theme.backdrop.r * 0.42f,
@@ -221,12 +225,16 @@ void TriangleTunnelRenderer::Render(ID2D1DCRenderTarget* target,
             tuning.lineAlphaBase + p * tuning.lineAlphaDepthGain + loud * tuning.lineAlphaLoudGain,
             0.0f,
             tuning.maxLineAlpha);
-        const float rot = time_ * (0.17f + 0.08f * mid) + depth * 0.52f;
+        const D2D1_POINT_2F frameCenter = SampleTunnelCenter(depth);
+        const D2D1_POINT_2F centerAhead = SampleTunnelCenter(std::min(1.0f, depth + 0.045f));
+        const D2D1_POINT_2F centerBehind = SampleTunnelCenter(std::max(0.0f, depth - 0.045f));
+        const float tangentAngle = std::atan2(centerAhead.y - centerBehind.y, centerAhead.x - centerBehind.x);
+        const float localRot = (tangentAngle + 1.5707963f) * 0.14f + std::sin(pathTime * 0.09f + depth * 2.2f) * 0.04f;
 
         std::array<D2D1_POINT_2F, 3> pts{};
         for (size_t v = 0; v < pts.size(); ++v) {
-            const float a = rot + static_cast<float>(v) * (kTau / 3.0f) - 1.5707963f;
-            pts[v] = ProjectPoint(cx, cy, radius, aspect, std::cos(a), std::sin(a), depth);
+            const float a = localRot + static_cast<float>(v) * (kTau / 3.0f) - 1.5707963f;
+            pts[v] = ProjectPoint(frameCenter.x, frameCenter.y, radius, aspect, std::cos(a), std::sin(a), depth);
         }
 
         glowBrush->SetColor(D2D1::ColorF(0.12f, 0.88f, 1.0f, alpha * 0.22f * glowBoost));
@@ -258,8 +266,10 @@ void TriangleTunnelRenderer::Render(ID2D1DCRenderTarget* target,
 
         const float shimmer = 0.58f + 0.42f * std::sin(time_ * (8.0f + treble * 18.0f) + s.phase);
         const float yWave = std::sin(time_ * 0.78f + s.phase) * 0.09f;
-        const D2D1_POINT_2F p0 = ProjectPoint(cx, cy, radius, aspect, s.lane * 0.78f, yWave, s.depth);
-        const D2D1_POINT_2F p1 = ProjectPoint(cx, cy, radius, aspect, s.lane * 0.78f, yWave, std::min(1.0f, s.depth + s.length));
+        const D2D1_POINT_2F center0 = SampleTunnelCenter(s.depth);
+        const D2D1_POINT_2F center1 = SampleTunnelCenter(std::min(1.0f, s.depth + s.length));
+        const D2D1_POINT_2F p0 = ProjectPoint(center0.x, center0.y, radius, aspect, s.lane * 0.78f, yWave, s.depth);
+        const D2D1_POINT_2F p1 = ProjectPoint(center1.x, center1.y, radius, aspect, s.lane * 0.78f, yWave, std::min(1.0f, s.depth + s.length));
 
         const float alpha = std::clamp((tuning.streakAlphaBase + treble * tuning.streakAlphaTrebleGain) * shimmer, 0.06f, 0.56f);
         accentBrush->SetColor(D2D1::ColorF(0.43f + treble * 0.36f, 0.82f, 1.0f, alpha));
@@ -281,7 +291,8 @@ void TriangleTunnelRenderer::Render(ID2D1DCRenderTarget* target,
         }
 
         const float wiggle = std::sin(time_ * 0.68f + s.phase) * 0.11f;
-        const D2D1_POINT_2F p = ProjectPoint(cx, cy, radius, aspect, s.lane * 0.66f, wiggle, s.depth);
+        const D2D1_POINT_2F sparkleCenter = SampleTunnelCenter(s.depth);
+        const D2D1_POINT_2F p = ProjectPoint(sparkleCenter.x, sparkleCenter.y, radius, aspect, s.lane * 0.66f, wiggle, s.depth);
         const float sparklePulse = 0.55f + 0.45f * std::sin(time_ * (10.0f + treble * 20.0f) + s.phase);
         const float alpha = std::clamp(
             (tuning.sparkleAlphaBase + treble * tuning.sparkleAlphaTrebleGain) * sparklePulse,
