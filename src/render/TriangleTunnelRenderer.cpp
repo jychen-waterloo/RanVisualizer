@@ -18,13 +18,17 @@ struct TunnelTuning {
     float pulseMotionGain;
     float glowBase;
     float glowLoudnessGain;
-    float centerDriftBasePx;
-    float centerDriftMidGainPx;
-    float centerThumpBassGainPx;
+    float centerDriftAmplitudeX;
+    float centerDriftAmplitudeY;
+    float centerDriftSpeedX;
+    float centerDriftSpeedY;
+    float centerAudioInfluence;
     float radiusFactor;
-    float lineThicknessBase;
-    float lineThicknessDepthGain;
-    float lineThicknessLoudGain;
+    float frameThicknessBase;
+    float frameThicknessDepthGain;
+    float frameThicknessLoudGain;
+    float frameGlowThicknessAdd;
+    float frameAccentThicknessScale;
     float lineAlphaBase;
     float lineAlphaDepthGain;
     float lineAlphaLoudGain;
@@ -32,6 +36,8 @@ struct TunnelTuning {
     size_t streakMin;
     float streakMidGain;
     float streakLoudGain;
+    float streakThicknessBase;
+    float streakThicknessTrebleGain;
 };
 
 TunnelTuning BuildTuning(const float motionIntensity) {
@@ -45,13 +51,17 @@ TunnelTuning BuildTuning(const float motionIntensity) {
         0.035f * motion,
         0.30f,
         0.32f,
-        1.5f,
-        2.6f,
-        2.0f,
+        4.8f,
+        3.2f,
+        0.18f,
+        0.14f,
+        0.18f,
         0.225f,
-        0.65f,
-        1.15f,
-        0.38f,
+        0.78f,
+        1.25f,
+        0.42f,
+        1.45f,
+        0.28f,
         0.06f,
         0.42f,
         0.08f,
@@ -59,6 +69,8 @@ TunnelTuning BuildTuning(const float motionIntensity) {
         8,
         8.0f,
         4.0f,
+        0.86f,
+        0.62f,
     };
 }
 
@@ -127,8 +139,14 @@ void TriangleTunnelRenderer::Render(ID2D1DCRenderTarget* target,
     const float pulse = 1.0f + bass * (tuning.pulseBassGain + tuning.pulseMotionGain);
     const float glowBoost = tuning.glowBase + loud * tuning.glowLoudnessGain;
 
-    const float cx = width_ * 0.5f + std::sin(time_ * (0.32f + mid * 0.34f)) * (tuning.centerDriftBasePx + tuning.centerDriftMidGainPx * mid);
-    const float cy = height_ * 0.5f + std::cos(time_ * 0.24f) * (tuning.centerDriftBasePx + tuning.centerThumpBassGainPx * bass);
+    const float driftX = std::sin(time_ * tuning.centerDriftSpeedX) * tuning.centerDriftAmplitudeX
+        + std::cos(time_ * tuning.centerDriftSpeedY * 0.57f) * (tuning.centerDriftAmplitudeX * 0.33f);
+    const float driftY = std::cos(time_ * tuning.centerDriftSpeedY) * tuning.centerDriftAmplitudeY
+        + std::sin(time_ * tuning.centerDriftSpeedX * 0.52f) * (tuning.centerDriftAmplitudeY * 0.30f);
+    const float gentleAudioOffsetX = std::sin(time_ * 0.43f + mid * 1.4f) * (tuning.centerAudioInfluence * (0.35f * mid + 0.15f * loud));
+    const float gentleAudioOffsetY = std::cos(time_ * 0.36f + bass * 1.1f) * (tuning.centerAudioInfluence * (0.30f * bass + 0.12f * loud));
+    const float cx = width_ * 0.5f + driftX + gentleAudioOffsetX;
+    const float cy = height_ * 0.5f + driftY + gentleAudioOffsetY;
     const float aspect = width_ / std::max(height_, 1.0f);
     const float radius = std::min(width_, height_) * tuning.radiusFactor * pulse;
 
@@ -153,7 +171,7 @@ void TriangleTunnelRenderer::Render(ID2D1DCRenderTarget* target,
         }
 
         const float p = 1.0f - depth;
-        const float thick = tuning.lineThicknessBase + p * tuning.lineThicknessDepthGain + loud * tuning.lineThicknessLoudGain;
+        const float thick = tuning.frameThicknessBase + p * tuning.frameThicknessDepthGain + loud * tuning.frameThicknessLoudGain;
         const float alpha = std::clamp(
             tuning.lineAlphaBase + p * tuning.lineAlphaDepthGain + loud * tuning.lineAlphaLoudGain,
             0.0f,
@@ -173,9 +191,9 @@ void TriangleTunnelRenderer::Render(ID2D1DCRenderTarget* target,
         for (int e = 0; e < 3; ++e) {
             const D2D1_POINT_2F a = pts[e];
             const D2D1_POINT_2F b = pts[(e + 1) % 3];
-            target->DrawLine(a, b, glowBrush, thick + 1.25f);
+            target->DrawLine(a, b, glowBrush, thick + tuning.frameGlowThicknessAdd);
             target->DrawLine(a, b, primaryBrush, thick);
-            target->DrawLine(a, b, accentBrush, std::max(0.5f, thick * 0.22f));
+            target->DrawLine(a, b, accentBrush, std::max(0.6f, thick * tuning.frameAccentThicknessScale));
         }
     }
 
@@ -200,7 +218,7 @@ void TriangleTunnelRenderer::Render(ID2D1DCRenderTarget* target,
 
         const float alpha = std::clamp((0.11f + treble * 0.24f) * shimmer, 0.04f, 0.42f);
         accentBrush->SetColor(D2D1::ColorF(0.40f + treble * 0.35f, 0.80f, 1.0f, alpha));
-        target->DrawLine(p0, p1, accentBrush, 0.72f + treble * 0.55f);
+        target->DrawLine(p0, p1, accentBrush, tuning.streakThicknessBase + treble * tuning.streakThicknessTrebleGain);
     }
 }
 
