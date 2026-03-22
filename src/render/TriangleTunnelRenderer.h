@@ -32,8 +32,8 @@ private:
         float phase{0.0f};
     };
 
-    static constexpr size_t kFrameCount = 28;
-    static constexpr size_t kStreakCount = 48;
+    static constexpr size_t kFrameCount = 18;
+    static constexpr size_t kStreakCount = 30;
 
     float width_{0.0f};
     float height_{0.0f};
