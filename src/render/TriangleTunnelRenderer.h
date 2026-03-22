@@ -32,8 +32,17 @@ private:
         float phase{0.0f};
     };
 
+    struct Sparkle {
+        float lane{0.0f};
+        float depth{0.0f};
+        float velocityBias{1.0f};
+        float radius{1.0f};
+        float phase{0.0f};
+    };
+
     static constexpr size_t kFrameCount = 18;
     static constexpr size_t kStreakCount = 30;
+    static constexpr size_t kSparkleCount = 24;
 
     float width_{0.0f};
     float height_{0.0f};
@@ -41,6 +50,7 @@ private:
     float travel_{0.0f};
     std::array<float, kFrameCount> frameDepths_{};
     std::array<Streak, kStreakCount> streaks_{};
+    std::array<Sparkle, kSparkleCount> sparkles_{};
     uint32_t rng_{0xA3579BDFu};
 
     void EnsureInitialized();

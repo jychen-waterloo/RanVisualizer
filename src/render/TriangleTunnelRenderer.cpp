@@ -18,26 +18,42 @@ struct TunnelTuning {
     float pulseMotionGain;
     float glowBase;
     float glowLoudnessGain;
+
     float centerDriftAmplitudeX;
     float centerDriftAmplitudeY;
-    float centerDriftSpeedX;
-    float centerDriftSpeedY;
+    float centerDriftFrequencyX;
+    float centerDriftFrequencyY;
+    float centerDriftSecondaryMix;
     float centerAudioInfluence;
+
     float radiusFactor;
+
     float frameThicknessBase;
     float frameThicknessDepthGain;
     float frameThicknessLoudGain;
     float frameGlowThicknessAdd;
     float frameAccentThicknessScale;
+
     float lineAlphaBase;
     float lineAlphaDepthGain;
     float lineAlphaLoudGain;
     float maxLineAlpha;
+
     size_t streakMin;
     float streakMidGain;
     float streakLoudGain;
     float streakThicknessBase;
     float streakThicknessTrebleGain;
+    float streakAlphaBase;
+    float streakAlphaTrebleGain;
+
+    size_t sparkleMin;
+    float sparkleTrebleGain;
+    float sparkleLoudGain;
+    float sparkleAlphaBase;
+    float sparkleAlphaTrebleGain;
+    float sparkleRadiusBase;
+    float sparkleRadiusTrebleGain;
 };
 
 TunnelTuning BuildTuning(const float motionIntensity) {
@@ -51,26 +67,42 @@ TunnelTuning BuildTuning(const float motionIntensity) {
         0.035f * motion,
         0.30f,
         0.32f,
-        4.8f,
-        3.2f,
-        0.18f,
-        0.14f,
-        0.18f,
+
+        8.5f,
+        4.2f,
+        0.085f,
+        0.059f,
+        0.36f,
+        0.10f,
+
         0.225f,
+
         0.78f,
         1.25f,
         0.42f,
         1.45f,
         0.28f,
+
         0.06f,
         0.42f,
         0.08f,
         0.62f,
+
         8,
         8.0f,
         4.0f,
-        0.86f,
-        0.62f,
+        0.94f,
+        0.68f,
+        0.14f,
+        0.30f,
+
+        6,
+        9.0f,
+        4.0f,
+        0.16f,
+        0.30f,
+        0.95f,
+        1.10f,
     };
 }
 
@@ -101,6 +133,14 @@ void TriangleTunnelRenderer::EnsureInitialized() {
         streak.velocityBias = 0.82f + NextRand01() * 0.36f;
         streak.length = 0.045f + NextRand01() * 0.07f;
         streak.phase = NextRand01() * kTau;
+    }
+
+    for (auto& sparkle : sparkles_) {
+        sparkle.lane = NextRand01() * 2.0f - 1.0f;
+        sparkle.depth = 0.12f + NextRand01() * 0.82f;
+        sparkle.velocityBias = 0.75f + NextRand01() * 0.48f;
+        sparkle.radius = 0.9f + NextRand01() * 1.2f;
+        sparkle.phase = NextRand01() * kTau;
     }
 }
 
@@ -139,14 +179,19 @@ void TriangleTunnelRenderer::Render(ID2D1DCRenderTarget* target,
     const float pulse = 1.0f + bass * (tuning.pulseBassGain + tuning.pulseMotionGain);
     const float glowBoost = tuning.glowBase + loud * tuning.glowLoudnessGain;
 
-    const float driftX = std::sin(time_ * tuning.centerDriftSpeedX) * tuning.centerDriftAmplitudeX
-        + std::cos(time_ * tuning.centerDriftSpeedY * 0.57f) * (tuning.centerDriftAmplitudeX * 0.33f);
-    const float driftY = std::cos(time_ * tuning.centerDriftSpeedY) * tuning.centerDriftAmplitudeY
-        + std::sin(time_ * tuning.centerDriftSpeedX * 0.52f) * (tuning.centerDriftAmplitudeY * 0.30f);
-    const float gentleAudioOffsetX = std::sin(time_ * 0.43f + mid * 1.4f) * (tuning.centerAudioInfluence * (0.35f * mid + 0.15f * loud));
-    const float gentleAudioOffsetY = std::cos(time_ * 0.36f + bass * 1.1f) * (tuning.centerAudioInfluence * (0.30f * bass + 0.12f * loud));
-    const float cx = width_ * 0.5f + driftX + gentleAudioOffsetX;
-    const float cy = height_ * 0.5f + driftY + gentleAudioOffsetY;
+    // Continuous centerline drift path: long, smooth arcs with mild secondary curvature.
+    const float driftAmpX = tuning.centerDriftAmplitudeX * (1.0f + tuning.centerAudioInfluence * (0.10f * loud + 0.08f * bass));
+    const float driftAmpY = tuning.centerDriftAmplitudeY * (1.0f + tuning.centerAudioInfluence * (0.08f * loud + 0.06f * mid));
+    const float phaseX = time_ * tuning.centerDriftFrequencyX;
+    const float phaseY = time_ * tuning.centerDriftFrequencyY;
+    const float primaryX = std::sin(phaseX);
+    const float secondaryX = std::sin(phaseX * 0.47f + 1.7f);
+    const float primaryY = std::cos(phaseY + 0.35f);
+    const float secondaryY = std::sin(phaseY * 0.61f + 2.2f);
+
+    const float cx = width_ * 0.5f + driftAmpX * ((1.0f - tuning.centerDriftSecondaryMix) * primaryX + tuning.centerDriftSecondaryMix * secondaryX);
+    const float cy = height_ * 0.5f + driftAmpY * ((1.0f - tuning.centerDriftSecondaryMix) * primaryY + tuning.centerDriftSecondaryMix * secondaryY);
+
     const float aspect = width_ / std::max(height_, 1.0f);
     const float radius = std::min(width_, height_) * tuning.radiusFactor * pulse;
 
@@ -216,9 +261,36 @@ void TriangleTunnelRenderer::Render(ID2D1DCRenderTarget* target,
         const D2D1_POINT_2F p0 = ProjectPoint(cx, cy, radius, aspect, s.lane * 0.78f, yWave, s.depth);
         const D2D1_POINT_2F p1 = ProjectPoint(cx, cy, radius, aspect, s.lane * 0.78f, yWave, std::min(1.0f, s.depth + s.length));
 
-        const float alpha = std::clamp((0.11f + treble * 0.24f) * shimmer, 0.04f, 0.42f);
-        accentBrush->SetColor(D2D1::ColorF(0.40f + treble * 0.35f, 0.80f, 1.0f, alpha));
+        const float alpha = std::clamp((tuning.streakAlphaBase + treble * tuning.streakAlphaTrebleGain) * shimmer, 0.06f, 0.56f);
+        accentBrush->SetColor(D2D1::ColorF(0.43f + treble * 0.36f, 0.82f, 1.0f, alpha));
         target->DrawLine(p0, p1, accentBrush, tuning.streakThicknessBase + treble * tuning.streakThicknessTrebleGain);
+    }
+
+    const size_t sparkleLimit = std::min(
+        sparkles_.size(),
+        static_cast<size_t>(tuning.sparkleMin + treble * tuning.sparkleTrebleGain + loud * tuning.sparkleLoudGain));
+
+    for (size_t i = 0; i < sparkleLimit; ++i) {
+        auto& s = sparkles_[i];
+        s.depth -= dt * speed * (0.42f + s.velocityBias * 0.30f);
+        if (s.depth < 0.04f) {
+            s.depth += 1.0f;
+            s.lane = NextRand01() * 2.0f - 1.0f;
+            s.phase = NextRand01() * kTau;
+            s.radius = 0.85f + NextRand01() * 1.25f;
+        }
+
+        const float wiggle = std::sin(time_ * 0.68f + s.phase) * 0.11f;
+        const D2D1_POINT_2F p = ProjectPoint(cx, cy, radius, aspect, s.lane * 0.66f, wiggle, s.depth);
+        const float sparklePulse = 0.55f + 0.45f * std::sin(time_ * (10.0f + treble * 20.0f) + s.phase);
+        const float alpha = std::clamp(
+            (tuning.sparkleAlphaBase + treble * tuning.sparkleAlphaTrebleGain) * sparklePulse,
+            0.08f,
+            0.62f);
+
+        const float sparkleRadius = (tuning.sparkleRadiusBase + treble * tuning.sparkleRadiusTrebleGain) * (0.55f + s.radius * 0.45f);
+        glowBrush->SetColor(D2D1::ColorF(0.88f, 0.78f + treble * 0.22f, 1.0f, alpha));
+        target->FillEllipse(D2D1::Ellipse(p, sparkleRadius, sparkleRadius), glowBrush);
     }
 }
 
