@@ -28,6 +28,11 @@ struct TunnelTuning {
     float centerAudioInfluence;
     float centerDriftAudioWarp;
 
+    float localRotationTangentBase;
+    float localRotationTangentMotionGain;
+    float localRotationWaveBase;
+    float localRotationWaveMotionGain;
+
     float radiusFactor;
 
     float frameThicknessBase;
@@ -79,6 +84,11 @@ TunnelTuning BuildTuning(const float motionIntensity) {
         0.24f,
         0.18f,
 
+        0.15f,
+        0.10f,
+        0.04f,
+        0.03f,
+
         0.225f,
 
         0.78f,
@@ -92,21 +102,21 @@ TunnelTuning BuildTuning(const float motionIntensity) {
         0.08f,
         0.62f,
 
-        10,
-        10.0f,
-        5.0f,
-        0.94f,
-        0.82f,
-        0.16f,
-        0.42f,
-
-        8,
+        11,
         11.0f,
-        6.0f,
-        0.22f,
-        0.42f,
-        0.95f,
-        1.35f,
+        5.5f,
+        0.94f,
+        0.92f,
+        0.19f,
+        0.48f,
+
+        10,
+        12.0f,
+        6.8f,
+        0.28f,
+        0.52f,
+        1.05f,
+        1.55f,
     };
 }
 
@@ -176,9 +186,10 @@ void TriangleTunnelRenderer::Render(ID2D1DCRenderTarget* target,
     const float mid = std::clamp(snapshot.midEnergy, 0.0f, 1.0f);
     const float treble = std::clamp(snapshot.trebleEnergy, 0.0f, 1.0f);
     const float loud = std::clamp(snapshot.loudness, 0.0f, 1.0f);
+    const float motion = std::clamp(config.motionIntensity, 0.0f, 1.0f);
     const TunnelTuning tuning = BuildTuning(config.motionIntensity);
 
-    const float speed = tuning.baseSpeed + (tuning.motionSpeedGain * std::clamp(config.motionIntensity, 0.0f, 1.0f))
+    const float speed = tuning.baseSpeed + (tuning.motionSpeedGain * motion)
         + bass * tuning.bassSpeedGain + loud * tuning.loudnessSpeedGain;
     const float pulse = 1.0f + bass * (tuning.pulseBassGain + tuning.pulseMotionGain);
     const float glowBoost = tuning.glowBase + loud * tuning.glowLoudnessGain;
@@ -237,7 +248,9 @@ void TriangleTunnelRenderer::Render(ID2D1DCRenderTarget* target,
         const D2D1_POINT_2F centerAhead = SampleTunnelCenter(std::min(1.0f, depth + 0.045f));
         const D2D1_POINT_2F centerBehind = SampleTunnelCenter(std::max(0.0f, depth - 0.045f));
         const float tangentAngle = std::atan2(centerAhead.y - centerBehind.y, centerAhead.x - centerBehind.x);
-        const float localRot = (tangentAngle + 1.5707963f) * 0.14f + std::sin(pathTime * 0.09f + depth * 2.2f) * 0.04f;
+        const float tangentRotScale = tuning.localRotationTangentBase + motion * tuning.localRotationTangentMotionGain;
+        const float waveRotScale = tuning.localRotationWaveBase + motion * tuning.localRotationWaveMotionGain;
+        const float localRot = (tangentAngle + 1.5707963f) * tangentRotScale + std::sin(pathTime * 0.09f + depth * 2.2f) * waveRotScale;
 
         std::array<D2D1_POINT_2F, 3> pts{};
         for (size_t v = 0; v < pts.size(); ++v) {
