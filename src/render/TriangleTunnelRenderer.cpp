@@ -77,6 +77,7 @@ TunnelTuning BuildTuning(const float motionIntensity) {
         1.85f,
         0.42f,
         0.24f,
+        0.18f,
 
         0.225f,
 
