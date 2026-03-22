@@ -1,6 +1,7 @@
 #pragma once
 
 #include "../render/Theme.h"
+#include "../render/VisualizerMode.h"
 
 #include <windows.h>
 
@@ -21,6 +22,7 @@ struct SettingsData {
     float backgroundOpacity{0.34f};
     float barOpacity{0.95f};
     float motionIntensity{0.6f};
+    render::VisualizerMode visualizerMode{render::VisualizerMode::ClassicBars};
     render::ThemePreset themePreset{render::ThemePreset::MinimalCyan};
     D2D1_COLOR_F barColor{0.26f, 0.72f, 0.95f, 0.95f};
     D2D1_COLOR_F backgroundColor{0.03f, 0.05f, 0.08f, 0.34f};

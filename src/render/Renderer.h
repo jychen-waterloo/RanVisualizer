@@ -6,6 +6,7 @@
 #include "RenderTypes.h"
 #include "RenderConfig.h"
 #include "Theme.h"
+#include "TriangleTunnelRenderer.h"
 
 #include <d2d1.h>
 #include <dwrite.h>
@@ -38,6 +39,7 @@ private:
     void DiscardDeviceResources();
     void DrawBars(const BarLayout& layout);
     void DrawBarsFast(const BarLayout& layout);
+    void DrawTriangleTunnel(const RenderSnapshot& snapshot, const FrameTiming& timing);
     void DrawOverlayControls();
     void DrawDebugText(const RenderSnapshot& snapshot, const FrameTiming& timing, size_t bandCount);
     void PresentLayered();
@@ -49,6 +51,7 @@ private:
     Theme theme_{};
     AnimationState animation_{};
     OverlayControls controls_{};
+    TriangleTunnelRenderer triangleTunnel_{};
     bool interactive_{true};
     RenderQualityMode qualityMode_{RenderQualityMode::Normal};
 

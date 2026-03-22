@@ -32,6 +32,7 @@ bool Renderer::Initialize(HWND hwnd) {
     }
 
     controls_.OnResize(static_cast<float>(width_), static_cast<float>(height_));
+    triangleTunnel_.OnResize(static_cast<float>(width_), static_cast<float>(height_));
     controls_.SetForceVisible(interactive_);
     return CreateDeviceResources();
 }
@@ -183,6 +184,7 @@ void Renderer::OnResize(const UINT width, const UINT height) {
     width_ = width;
     height_ = height;
     controls_.OnResize(static_cast<float>(width_), static_cast<float>(height_));
+    triangleTunnel_.OnResize(static_cast<float>(width_), static_cast<float>(height_));
     if (renderTarget_) {
         CreateBitmapResources(width_, height_);
     }
@@ -273,6 +275,12 @@ void Renderer::DrawBarsFast(const BarLayout& layout) {
         const float top = baseRect.bottom - barHeightPx;
         renderTarget_->FillRectangle(D2D1::RectF(baseRect.left, top, baseRect.right, baseRect.bottom), barBrush_.Get());
     }
+}
+
+
+void Renderer::DrawTriangleTunnel(const RenderSnapshot& snapshot, const FrameTiming& timing) {
+    triangleTunnel_.Render(renderTarget_.Get(), snapshot, timing, config_, theme_,
+        barBrush_.Get(), peakBrush_.Get(), glowBrush_.Get(), backdropBrush_.Get());
 }
 
 void Renderer::DrawOverlayControls() {
@@ -399,7 +407,11 @@ void Renderer::Render(const RenderSnapshot& snapshot, const FrameTiming& timing,
         const D2D1_ROUNDED_RECT plate = D2D1::RoundedRect(D2D1::RectF(6.0f, 6.0f, size.width - 6.0f, size.height - 6.0f), 16.0f, 16.0f);
         renderTarget_->FillRoundedRectangle(plate, backdropBrush_.Get());
 
-        DrawBars(layout);
+        if (config_.mode == VisualizerMode::TriangleTunnel) {
+            DrawTriangleTunnel(snapshot, timing);
+        } else {
+            DrawBars(layout);
+        }
         controls_.Update(timing.deltaSeconds);
         DrawOverlayControls();
         if (showDebug) {

@@ -174,6 +174,7 @@ bool Settings::Load(SettingsData& data) const {
     if (FindTokenValue(text, "backgroundOpacity", value)) ParseFloat(value, parsed.backgroundOpacity);
     if (FindTokenValue(text, "barOpacity", value)) ParseFloat(value, parsed.barOpacity);
     if (FindTokenValue(text, "motionIntensity", value)) ParseFloat(value, parsed.motionIntensity);
+    if (FindTokenValue(text, "visualizerMode", value)) parsed.visualizerMode = render::VisualizerModeFromString(value);
     if (FindTokenValue(text, "themePreset", value)) parsed.themePreset = ParsePreset(value);
 
     if (FindTokenValue(text, "barColor", value)) parsed.barColor = ParseColor(value, parsed.barColor);
@@ -210,6 +211,7 @@ bool Settings::Save(const SettingsData& data) const {
     out << "  \"backgroundOpacity\": " << data.backgroundOpacity << ",\n";
     out << "  \"barOpacity\": " << data.barOpacity << ",\n";
     out << "  \"motionIntensity\": " << data.motionIntensity << ",\n";
+    out << "  \"visualizerMode\": \"" << render::VisualizerModeToString(data.visualizerMode) << "\",\n";
     out << "  \"themePreset\": \"" << PresetToString(data.themePreset) << "\",\n";
     WriteColor(out, "barColor", data.barColor, true);
     WriteColor(out, "backgroundColor", data.backgroundColor, false);

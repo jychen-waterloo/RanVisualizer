@@ -264,6 +264,7 @@ SettingsData OverlayWindow::CaptureSettings() const {
     data.backgroundOpacity = settings_.backgroundOpacity;
     data.barOpacity = settings_.barOpacity;
     data.motionIntensity = settings_.motionIntensity;
+    data.visualizerMode = settings_.visualizerMode;
     data.themePreset = settings_.themePreset;
     data.barColor = settings_.barColor;
     data.backgroundColor = settings_.backgroundColor;
@@ -301,6 +302,7 @@ void OverlayWindow::ApplyRenderConfig() {
     render::RenderConfig cfg{};
     cfg.barCount = settings_.barCount;
     cfg.motionIntensity = settings_.motionIntensity;
+    cfg.mode = settings_.visualizerMode;
     cfg.theme.preset = settings_.themePreset;
     cfg.theme.backgroundOpacity = settings_.backgroundOpacity;
     cfg.theme.barOpacity = settings_.barOpacity;
