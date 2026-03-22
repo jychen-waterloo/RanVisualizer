@@ -1,73 +1,104 @@
-# RanVisualizer - Resize Refinement Milestone
+# RanVisualizer - Triangle Tunnel Mode Milestone
 
-This milestone extends the existing Windows audio visualizer overlay with **borderless edge/corner resizing** while preserving:
+This milestone extends the existing Windows audio visualizer overlay with a **new selectable render mode**:
 
-- WASAPI loopback capture
-- analyzer pipeline
-- smooth layered overlay rendering
-- tray integration
-- hotkeys
-- hover close button
-- existing theme/config system
+- **Classic Bars** (existing mode, unchanged)
+- **Synthwave Triangle Tunnel** (new mode)
+
+The app still uses the same WASAPI + analyzer pipeline, tray menu, overlay controls, and settings persistence.
 
 ## What's new
 
-- The borderless overlay can now be resized from all edges and corners in **interactive mode**.
-- Width and height are persisted in the existing settings file and restored on startup.
-- Renderer layout updates live while resizing (bars, backdrop, and controls relayout to current client size).
+- Added a new render mode: **Synthwave Triangle Tunnel**.
+- Added tray menu mode switching under **Visualizer mode**.
+- Added settings persistence for selected visualizer mode (`visualizerMode`).
+- Kept the existing classic bars path fully intact.
 
-## Resize behavior
+## Triangle Tunnel render approach
 
-- **Interactive mode**: resize hit-testing is enabled and works from:
-  - left / right / top / bottom edges
-  - top-left / top-right / bottom-left / bottom-right corners
-- **Click-through mode**: resize interaction is disabled (window remains non-interactive).
-- Dragging the non-control body still moves the overlay.
-- Hover close button keeps priority over resize hit regions near top-right control area.
+The new mode is implemented as a **lightweight fake-3D perspective scene** in the existing Direct2D rendering stack:
 
-## Layout and spectrum semantics
+1. Repeating triangle frames are distributed across virtual depth.
+2. Depth is advanced each frame to create forward tunnel movement.
+3. Frames are projected with simple perspective scaling (no heavy 3D engine).
+4. Interior streak lines are projected and recycled for motion texture.
+5. Neon color layering is achieved with multiple line passes (glow + core accent).
 
-Resize changes only presentation/layout:
+No webview/browser rendering and no external 3D runtime were introduced.
 
-- configured bar count remains fixed
-- analyzer output meaning remains unchanged
-- normalized band values remain normalized
-- final bar pixel height is `normalizedValue * currentDrawableHeight`
+## Audio-reactive mapping
 
-So a taller window gives more pixel range without changing normalized amplitude semantics.
+The tunnel mode maps analyzer outputs as follows:
 
-## Size constraints
+- **Bass energy**
+  - boosts tunnel pulse/scale (frame expansion)
+  - increases forward movement speed
+  - adds slight center thump drift
 
-To keep the overlay practical and polished during borderless resizing:
+- **Mid energy**
+  - increases tunnel drift activity
+  - increases streak count/density
+  - influences rotational motion feel
 
-- minimum width: **280 px**
-- minimum height: **120 px**
-- maximum height: **900 px**
+- **Treble energy**
+  - increases streak shimmer/flicker
+  - brightens thin accent highlights
 
-(Width upper bounds are additionally clamped by config loading logic.)
+- **Overall loudness**
+  - increases overall glow/alpha intensity
+  - increases general scene energy
 
-## Persistence and config file
+This keeps the scene coherent and musically driven rather than random.
 
-Settings are persisted as JSON.
+## How to switch modes
 
-Primary path:
+1. Right-click the tray icon.
+2. Open **Visualizer mode**.
+3. Select either:
+   - **Classic Bars**
+   - **Synthwave Triangle Tunnel**
+
+Switching is immediate and does not require app restart.
+
+## Settings persistence
+
+Settings are persisted as JSON at:
 
 ```text
 %APPDATA%\RanVisualizer\settings.json
 ```
 
-Fallback path (if AppData resolution fails):
+(With existing fallback to `./config/settings.json` if needed.)
 
-```text
-./config/settings.json
-```
+The selected mode is saved in:
 
-Persisted size fields:
+- `visualizerMode` (`"ClassicBars"` or `"TriangleTunnel"`)
 
-- `width`
-- `height`
+## Overlay behavior and compatibility
 
-If the config is missing or partially invalid, safe defaults and clamped values are used.
+The new mode preserves existing overlay behavior:
+
+- layered transparent overlay rendering
+- click-through / interactive switching
+- tray + hotkeys
+- hover close button
+- resize behavior and persisted size/position
+
+It adapts to different aspect ratios and remains suitable for resizable overlay windows.
+
+## First-version limitations
+
+This first implementation intentionally focuses on a lightweight core scene:
+
+- repeating triangle frames with perspective
+- reactive speed/pulse/glow
+- interior streak lines
+
+Not yet included in this milestone:
+
+- advanced particle systems
+- complex camera paths
+- multi-pass bloom post-processing
 
 ## Build (Visual Studio 2022 + CMake)
 
@@ -81,33 +112,3 @@ Binary output:
 ```text
 build/Release/RanVisualizerCapture.exe
 ```
-
-## Known limitations
-
-- Resize interaction is intentionally disabled in click-through mode.
-- No automatic bar-count scaling based on width in this milestone (bar count stays user-configured).
-- Linux CI/build environments without Windows SDK cannot compile this target (Windows native app).
-
-## Packaging / Release Build (Windows)
-
-A one-click packaging script is provided for creating a portable Release x64 zip package.
-
-```powershell
-powershell -ExecutionPolicy Bypass -File .\scripts\package_release.ps1
-```
-
-What the script does:
-
-1. Configures CMake for **Visual Studio 2022** (`-A x64`)
-2. Builds the app in **Release**
-3. Installs files into `dist/RanVisualizerCapture/`
-4. Creates `dist/RanVisualizerCapture-win-x64.zip`
-
-Included in the package (when present):
-
-- `RanVisualizerCapture.exe`
-- `README.md`
-- `LICENSE`
-- `assets/` directory (if it exists in the repo)
-
-Release builds use the static MSVC runtime (`/MT`) to reduce end-user VC++ runtime dependency issues.

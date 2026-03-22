@@ -23,6 +23,10 @@ add_executable(${RV_APP_TARGET} WIN32
     src/app/Settings.cpp
     src/render/Renderer.h
     src/render/Renderer.cpp
+    src/render/VisualizerMode.h
+    src/render/VisualizerMode.cpp
+    src/render/TriangleTunnelRenderer.h
+    src/render/TriangleTunnelRenderer.cpp
     src/render/RenderTypes.h
     src/render/RenderConfig.h
     src/render/RenderConfig.cpp

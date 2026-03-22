@@ -53,11 +53,12 @@ void TrayIcon::ShowMenu(const SettingsData& settings, const bool overlayVisible,
     HMENU sizeMenu = CreatePopupMenu();
     HMENU barMenu = CreatePopupMenu();
     HMENU motionMenu = CreatePopupMenu();
+    HMENU modeMenu = CreatePopupMenu();
     HMENU themeMenu = CreatePopupMenu();
     HMENU barColorMenu = CreatePopupMenu();
     HMENU bgColorMenu = CreatePopupMenu();
     HMENU opacityMenu = CreatePopupMenu();
-    if (!menu || !sizeMenu || !barMenu || !motionMenu || !themeMenu || !barColorMenu || !bgColorMenu || !opacityMenu) {
+    if (!menu || !sizeMenu || !barMenu || !motionMenu || !modeMenu || !themeMenu || !barColorMenu || !bgColorMenu || !opacityMenu) {
         return;
     }
 
@@ -81,6 +82,10 @@ void TrayIcon::ShowMenu(const SettingsData& settings, const bool overlayVisible,
     AppendMenuW(motionMenu, Checked(settings.motionIntensity >= 0.33f && settings.motionIntensity < 0.75f), MenuMotionBalanced, L"Balanced");
     AppendMenuW(motionMenu, Checked(settings.motionIntensity >= 0.75f), MenuMotionEnergetic, L"Energetic");
     AppendMenuW(menu, MF_POPUP, reinterpret_cast<UINT_PTR>(motionMenu), L"Motion feel");
+
+    AppendMenuW(modeMenu, Checked(settings.visualizerMode == render::VisualizerMode::ClassicBars), MenuModeClassicBars, L"Classic Bars");
+    AppendMenuW(modeMenu, Checked(settings.visualizerMode == render::VisualizerMode::TriangleTunnel), MenuModeTriangleTunnel, L"Synthwave Triangle Tunnel");
+    AppendMenuW(menu, MF_POPUP, reinterpret_cast<UINT_PTR>(modeMenu), L"Visualizer mode");
 
     AppendMenuW(themeMenu, Checked(settings.themePreset == render::ThemePreset::MinimalCyan), MenuThemeMinimalCyan, L"Minimal Cyan");
     AppendMenuW(themeMenu, Checked(settings.themePreset == render::ThemePreset::NeonPurple), MenuThemeNeonPurple, L"Neon Purple");
@@ -155,6 +160,9 @@ bool TrayIcon::TryApplySettingsCommand(const WPARAM command, SettingsData& setti
     case MenuMotionCalm: settings.motionIntensity = 0.2f; return true;
     case MenuMotionBalanced: settings.motionIntensity = 0.55f; return true;
     case MenuMotionEnergetic: settings.motionIntensity = 0.95f; return true;
+
+    case MenuModeClassicBars: settings.visualizerMode = render::VisualizerMode::ClassicBars; return true;
+    case MenuModeTriangleTunnel: settings.visualizerMode = render::VisualizerMode::TriangleTunnel; return true;
 
     case MenuThemeMinimalCyan: settings.themePreset = render::ThemePreset::MinimalCyan; return true;
     case MenuThemeNeonPurple: settings.themePreset = render::ThemePreset::NeonPurple; return true;

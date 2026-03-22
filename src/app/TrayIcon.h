@@ -31,6 +31,9 @@ public:
         MenuMotionBalanced = 3302,
         MenuMotionEnergetic = 3303,
 
+        MenuModeClassicBars = 3351,
+        MenuModeTriangleTunnel = 3352,
+
         MenuThemeMinimalCyan = 3401,
         MenuThemeNeonPurple = 3402,
         MenuThemeWarmAmber = 3403,
